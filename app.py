@@ -5,16 +5,9 @@ Advanced repository intelligence analysis and AI architectural review.
 
 import json
 import os
-import io
 from typing import Optional
-from datetime import datetime
 
 import streamlit as st
-from reportlab.lib.pagesizes import letter
-from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from reportlab.lib.units import inch
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, PageBreak, Table, TableStyle
-from reportlab.lib import colors
 
 from github_fetcher import fetch_repository, parse_github_url
 from file_classifier import (
@@ -27,6 +20,7 @@ from config_parser import parse_all_configs
 from graph_builder import build_all_graphs
 from ai_interpreter import get_ai_review
 from semantic_inference import generate_description, enhance_function_descriptions
+from pdf_generator import generate_comprehensive_pdf_report
 
 # ──────────────────────────────────────────────
 # Page Configuration
@@ -562,130 +556,8 @@ def _generate_file_summary(analysis: dict) -> str:
     return " • ".join(summary_parts) if summary_parts else f"{lang} source file"
 
 
-def generate_pdf_report(results: dict) -> bytes:
-    """Generate a comprehensive PDF report of the analysis."""
-    buffer = io.BytesIO()
-    doc = SimpleDocTemplate(buffer, pagesize=letter, topMargin=0.5*inch, bottomMargin=0.5*inch)
-    story = []
-    styles = getSampleStyleSheet()
-    
-    # Custom styles
-    title_style = ParagraphStyle(
-        'CustomTitle',
-        parent=styles['Heading1'],
-        fontSize=24,
-        textColor=colors.HexColor('#4e8cff'),
-        spaceAfter=30,
-    )
-    heading_style = ParagraphStyle(
-        'CustomHeading',
-        parent=styles['Heading2'],
-        fontSize=16,
-        textColor=colors.HexColor('#4e8cff'),
-        spaceAfter=12,
-        spaceBefore=12,
-    )
-    
-    meta = results["master_json"]["project_metadata"]
-    
-    # Title
-    story.append(Paragraph(f"Repository Intelligence Report", title_style))
-    story.append(Paragraph(f"{meta['owner']}/{meta['repo']}", styles['Heading2']))
-    story.append(Paragraph(f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", styles['Normal']))
-    story.append(Spacer(1, 0.3*inch))
-    
-    # Project Overview
-    story.append(Paragraph("Project Overview", heading_style))
-    overview_data = [
-        ["Primary Language", meta['primary_language']],
-        ["Total Files", str(meta['total_files'])],
-        ["Source Files", str(meta['source_files'])],
-        ["Config Files", str(meta['config_files'])],
-        ["Documentation Files", str(meta['documentation_files'])],
-        ["Frontend Detected", "Yes" if meta['frontend_detected'] else "No"],
-        ["Backend Detected", "Yes" if meta['backend_detected'] else "No"],
-    ]
-    t = Table(overview_data, colWidths=[2.5*inch, 3*inch])
-    t.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (0, -1), colors.HexColor('#262730')),
-        ('TEXTCOLOR', (0, 0), (-1, -1), colors.black),
-        ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
-        ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
-        ('FONTSIZE', (0, 0), (-1, -1), 10),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
-        ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
-    ]))
-    story.append(t)
-    story.append(Spacer(1, 0.2*inch))
-    
-    # Dependencies
-    story.append(Paragraph("Dependencies", heading_style))
-    deps = results["master_json"]["dependencies"]
-    frameworks = results["master_json"]["frameworks"]
-    
-    if frameworks.get("frontend"):
-        story.append(Paragraph(f"<b>Frontend Frameworks:</b> {', '.join(frameworks['frontend'])}", styles['Normal']))
-    if frameworks.get("backend"):
-        story.append(Paragraph(f"<b>Backend Frameworks:</b> {', '.join(frameworks['backend'])}", styles['Normal']))
-    
-    if deps.get("frontend") and len(deps["frontend"]) > 0:
-        story.append(Paragraph(f"<b>Frontend Dependencies ({len(deps['frontend'])}):</b> {', '.join(deps['frontend'][:20])}", styles['Normal']))
-    if deps.get("backend") and len(deps["backend"]) > 0:
-        story.append(Paragraph(f"<b>Backend Dependencies ({len(deps['backend'])}):</b> {', '.join(deps['backend'][:20])}", styles['Normal']))
-    
-    story.append(Spacer(1, 0.2*inch))
-    
-    # Infrastructure
-    story.append(Paragraph("Infrastructure", heading_style))
-    infra = results["master_json"]["infrastructure"]
-    story.append(Paragraph(f"Docker: {'Yes' if infra['docker_used'] else 'No'}", styles['Normal']))
-    story.append(Paragraph(f"CI/CD Detected: {'Yes' if infra['ci_cd_detected'] else 'No'}", styles['Normal']))
-    story.append(Spacer(1, 0.2*inch))
-    
-    # Source Analysis Summary
-    story.append(Paragraph("Source Code Analysis", heading_style))
-    source_analysis = results["source_analysis"]
-    
-    total_classes = sum(len(a.get("classes", [])) for a in source_analysis)
-    total_functions = sum(len(a.get("functions", [])) for a in source_analysis)
-    total_components = sum(len(a.get("components", [])) for a in source_analysis)
-    total_routes = sum(len(a.get("routes", [])) for a in source_analysis)
-    
-    story.append(Paragraph(f"Total Classes: {total_classes}", styles['Normal']))
-    story.append(Paragraph(f"Total Functions: {total_functions}", styles['Normal']))
-    if total_components > 0:
-        story.append(Paragraph(f"Total React Components: {total_components}", styles['Normal']))
-    if total_routes > 0:
-        story.append(Paragraph(f"Total API Routes: {total_routes}", styles['Normal']))
-    
-    story.append(Spacer(1, 0.2*inch))
-    
-    # Key Files with Semantic Descriptions
-    story.append(Paragraph("Key Files", heading_style))
-    for analysis in source_analysis[:15]:  # Limit to first 15 files
-        fp = analysis["file_path"]
-        semantic_desc = analysis.get("semantic_description", "")
-        if semantic_desc:
-            story.append(Paragraph(f"<b>{fp}</b>", styles['Normal']))
-            story.append(Paragraph(semantic_desc, styles['Normal']))
-            story.append(Spacer(1, 0.1*inch))
-    
-    story.append(PageBreak())
-    
-    # AI Review (if available)
-    ai_review = results.get("ai_review")
-    if ai_review and ai_review.get("success"):
-        story.append(Paragraph("AI Architectural Review", heading_style))
-        review_text = ai_review["review"].replace("#", "").replace("*", "")
-        for paragraph in review_text.split("\n\n"):
-            if paragraph.strip():
-                story.append(Paragraph(paragraph.strip(), styles['Normal']))
-                story.append(Spacer(1, 0.1*inch))
-    
-    # Build PDF
-    doc.build(story)
-    buffer.seek(0)
-    return buffer.getvalue()
+# PDF generation is now handled by the dedicated pdf_generator module
+# See pdf_generator.py for the comprehensive PDF generation implementation
 
 
 def render_pdf_export(results: dict):
@@ -696,9 +568,9 @@ def render_pdf_export(results: dict):
     
     with col1:
         if st.button("📥 Generate PDF Report", type="primary", use_container_width=True):
-            with st.spinner("Generating PDF report..."):
+            with st.spinner("Generating comprehensive PDF report..."):
                 try:
-                    pdf_bytes = generate_pdf_report(results)
+                    pdf_bytes = generate_comprehensive_pdf_report(results)
                     st.download_button(
                         label="⬇️ Download PDF Report",
                         data=pdf_bytes,
