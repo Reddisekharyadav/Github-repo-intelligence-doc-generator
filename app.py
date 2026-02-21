@@ -178,12 +178,41 @@ def _build_master_json(
     graphs: dict,
 ) -> dict:
     """Build the structured master JSON output."""
+    # Determine project type string
+    type_str = "Software Project"
+    if project_type["frontend_detected"] and project_type["backend_detected"]:
+        type_str = "Full-Stack Application"
+    elif project_type["is_nextjs"]:
+        type_str = "Next.js Application"
+    elif project_type["is_vite"]:
+        type_str = "Vite Application"
+    elif project_type["frontend_detected"]:
+        type_str = "Frontend Application"
+    elif project_type["backend_detected"]:
+        if primary_lang == "Python":
+            type_str = "Python Backend Application"
+        elif primary_lang in ("JavaScript", "TypeScript"):
+            type_str = "Node.js Backend Application"
+        else:
+            type_str = "Backend Application"
+    
+    # Calculate language breakdown
+    from file_classifier import detect_language
+    lang_breakdown = {}
+    for file in repo_data["files"]:
+        lang = detect_language(file["path"])
+        if lang:
+            base_lang = lang.split(" ")[0]  # Normalize "TypeScript (React)" -> "TypeScript"
+            lang_breakdown[base_lang] = lang_breakdown.get(base_lang, 0) + 1
+    
     return {
         "project_metadata": {
             "owner": repo_data["owner"],
             "repo": repo_data["repo"],
             "branch": repo_data["branch"],
             "primary_language": primary_lang,
+            "project_type": type_str,
+            "language_breakdown": lang_breakdown,
             "total_files": len(repo_data["files"]),
             "source_files": len(classification["source"]),
             "config_files": len(classification["config"]),
