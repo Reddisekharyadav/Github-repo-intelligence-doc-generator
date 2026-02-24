@@ -1,11 +1,18 @@
 """
 Semantic Inference Engine
-Generates intelligent function and component descriptions using rule-based heuristics.
-No AI required - works offline using static code analysis patterns.
+Generates intelligent function and component descriptions using rule-based heuristics
+and local pre-trained models when available.
+Works offline using static code analysis patterns and transformers library.
 """
 
 import re
 from typing import Dict, List
+
+try:
+    from local_inference import generate_function_description as gen_func_desc
+    HAS_LOCAL_inference = True
+except ImportError:
+    HAS_LOCAL_inference = False
 
 
 def generate_description(file_analysis: dict) -> str:
@@ -107,8 +114,8 @@ def generate_description(file_analysis: dict) -> str:
 
 def enhance_function_descriptions(functions: List[Dict], file_path: str, language: str, file_content: str = "") -> List[Dict]:
     """
-    Enhance function objects with semantic descriptions based on naming patterns.
-    Uses heuristic analysis - no AI required.
+    Enhance function objects with semantic descriptions using local inference or heuristics.
+    Uses Flan-T5 model when available, falls back to pattern matching.
     """
     if not functions:
         return functions
@@ -123,8 +130,25 @@ def enhance_function_descriptions(functions: List[Dict], file_path: str, languag
         if func.get("description", "").strip():
             continue
         
-        # Generate description based on naming patterns
-        description = _infer_function_purpose(func_name, language, func.get("decorators", []))
+        # Try local model first if available
+        description = None
+        if HAS_LOCAL_inference:
+            try:
+                # Prepare function info for the model
+                func_info = {
+                    "name": func_name,
+                    "params": func.get("params", {}),
+                    "returns": func.get("returns", ""),
+                    "docstring": func.get("docstring", ""),
+                    "language": language,
+                }
+                description = gen_func_desc(func_info)
+            except Exception as e:
+                print(f"Local inference error: {e}, falling back to heuristics")
+        
+        # Fall back to heuristic analysis
+        if not description:
+            description = _infer_function_purpose(func_name, language, func.get("decorators", []))
         
         if description:
             func["description"] = description

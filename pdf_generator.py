@@ -205,31 +205,17 @@ def add_cover_page(story: List, results: Dict, styles: Dict):
 
 
 def add_table_of_contents(story: List, results: Dict, styles: Dict):
-    """Add table of contents."""
-    story.append(Paragraph("📑 TABLE OF CONTENTS", styles['SectionHeader']))
-    story.append(Spacer(1, 0.2*inch))
-    
-    toc_items = [
-        "1. Executive Summary",
-        "2. Project Overview",
-        "3. Dependencies & Frameworks",
-        "4. Infrastructure & Build Configuration",
-        "5. File Structure & Classification",
-        "6. Detailed Source Code Analysis",
-        "7. Configuration Files Analysis",
-        "8. Architecture Insights",
-        "9. AI Architectural Review",
-        "10. Appendix",
-    ]
-    
-    for item in toc_items:
-        story.append(Paragraph(f"• {item}", styles['ListItem']))
-    
-    story.append(PageBreak())
+    """DEPRECATED: Table of contents removed for more compact format."""
+    pass
 
 
-def add_executive_summary(story: List, results: Dict, styles: Dict):
-    """Add executive summary section."""
+# ──────────────────────────────────────────────
+# Page-Based Section Functions (Optimized Layout)
+# ──────────────────────────────────────────────
+
+
+def add_executive_summary_page(story: List, results: Dict, styles: Dict):
+    """Executive summary page - optimized for page layout."""
     story.append(Paragraph("1. EXECUTIVE SUMMARY", styles['SectionHeader']))
     story.append(Spacer(1, 0.1*inch))
     
@@ -250,7 +236,7 @@ def add_executive_summary(story: List, results: Dict, styles: Dict):
     """
     
     story.append(Paragraph(summary_text, styles['Description']))
-    story.append(Spacer(1, 0.1*inch))
+    story.append(Spacer(1, 0.15*inch))
     
     # Key metrics table
     metrics_data = [
@@ -269,8 +255,8 @@ def add_executive_summary(story: List, results: Dict, styles: Dict):
     story.append(Spacer(1, 0.2*inch))
 
 
-def add_project_overview(story: List, results: Dict, styles: Dict):
-    """Add detailed project overview."""
+def add_project_overview_page(story: List, results: Dict, styles: Dict):
+    """Project overview page with language distribution."""
     story.append(Paragraph("2. PROJECT OVERVIEW", styles['SectionHeader']))
     story.append(Spacer(1, 0.1*inch))
     
@@ -312,94 +298,77 @@ def add_project_overview(story: List, results: Dict, styles: Dict):
     t = Table(file_stats_data, colWidths=[3*inch, 2*inch])
     t.setStyle(create_table_style())
     story.append(t)
-    story.append(Spacer(1, 0.2*inch))
+    story.append(Spacer(1, 0.15*inch))
 
 
-def add_dependencies_section(story: List, results: Dict, styles: Dict):
-    """Add dependencies and frameworks section."""
-    story.append(PageBreak())
-    story.append(Paragraph("3. DEPENDENCIES & FRAMEWORKS", styles['SectionHeader']))
+def add_dependencies_infrastructure_page(story: List, results: Dict, styles: Dict):
+    """Add dependencies, frameworks, and infrastructure on one optimized page."""
+    story.append(Paragraph("3. DEPENDENCIES, FRAMEWORKS & INFRASTRUCTURE", styles['SectionHeader']))
     story.append(Spacer(1, 0.1*inch))
     
     frameworks = results["master_json"].get("frameworks", {})
     deps = results["master_json"].get("dependencies", {})
+    infrastructure = results["master_json"].get("infrastructure", {})
     
     # Frameworks
     story.append(Paragraph("3.1 Detected Frameworks", styles['SubHeader']))
     
     if frameworks.get("frontend"):
-        story.append(Paragraph("<b>Frontend Frameworks:</b>", styles['Normal']))
+        story.append(Paragraph("<b>Frontend:</b>", styles['Normal']))
         for fw in frameworks["frontend"]:
             story.append(Paragraph(f"• {sanitize_text(fw)}", styles['ListItem']))
-        story.append(Spacer(1, 0.1*inch))
+        story.append(Spacer(1, 0.05*inch))
     
     if frameworks.get("backend"):
-        story.append(Paragraph("<b>Backend Frameworks:</b>", styles['Normal']))
+        story.append(Paragraph("<b>Backend:</b>", styles['Normal']))
         for fw in frameworks["backend"]:
             story.append(Paragraph(f"• {sanitize_text(fw)}", styles['ListItem']))
-        story.append(Spacer(1, 0.1*inch))
+        story.append(Spacer(1, 0.05*inch))
     
     if not frameworks.get("frontend") and not frameworks.get("backend"):
         story.append(Paragraph("No major frameworks detected.", styles['Description']))
     
-    story.append(Spacer(1, 0.2*inch))
+    story.append(Spacer(1, 0.12*inch))
     
     # Dependencies
     story.append(Paragraph("3.2 Package Dependencies", styles['SubHeader']))
     
     if deps.get("frontend"):
-        story.append(Paragraph(f"<b>Frontend Dependencies ({len(deps['frontend'])}):</b>", styles['Normal']))
-        dep_list = ", ".join([sanitize_text(d) for d in sorted(deps["frontend"][:30])])
+        story.append(Paragraph(f"<b>Frontend ({len(deps['frontend'])}):</b>", styles['Normal']))
+        dep_list = ", ".join([sanitize_text(d) for d in sorted(deps["frontend"][:20])])
         story.append(Paragraph(dep_list, styles['Description']))
-        if len(deps['frontend']) > 30:
-            story.append(Paragraph(f"... and {len(deps['frontend']) - 30} more", styles['Metadata']))
-        story.append(Spacer(1, 0.1*inch))
+        if len(deps['frontend']) > 20:
+            story.append(Paragraph(f"... +{len(deps['frontend']) - 20} more", styles['Metadata']))
+        story.append(Spacer(1, 0.08*inch))
     
     if deps.get("backend"):
-        story.append(Paragraph(f"<b>Backend Dependencies ({len(deps['backend'])}):</b>", styles['Normal']))
-        dep_list = ", ".join([sanitize_text(d) for d in sorted(deps["backend"][:30])])
+        story.append(Paragraph(f"<b>Backend ({len(deps['backend'])}):</b>", styles['Normal']))
+        dep_list = ", ".join([sanitize_text(d) for d in sorted(deps["backend"][:20])])
         story.append(Paragraph(dep_list, styles['Description']))
-        if len(deps['backend']) > 30:
-            story.append(Paragraph(f"... and {len(deps['backend']) - 30} more", styles['Metadata']))
-        story.append(Spacer(1, 0.1*inch))
+        if len(deps['backend']) > 20:
+            story.append(Paragraph(f"... +{len(deps['backend']) - 20} more", styles['Metadata']))
     
-    if not deps.get("frontend") and not deps.get("backend"):
-        story.append(Paragraph("No package dependencies detected.", styles['Description']))
-    
-    story.append(Spacer(1, 0.2*inch))
-
-
-def add_infrastructure_section(story: List, results: Dict, styles: Dict):
-    """Add infrastructure and build configuration section."""
-    story.append(Paragraph("4. INFRASTRUCTURE & BUILD CONFIGURATION", styles['SectionHeader']))
-    story.append(Spacer(1, 0.1*inch))
+    # Infrastructure section
+    story.append(Spacer(1, 0.12*inch))
+    story.append(Paragraph("3.3 Infrastructure & Build", styles['SubHeader']))
     
     infra = results["master_json"].get("infrastructure", {})
     
     infra_data = [
         ["Component", "Status"],
-        ["Docker", "✓ Detected" if infra.get('docker_used') else "✗ Not Found"],
-        ["CI/CD", "✓ Detected" if infra.get('ci_cd_detected') else "✗ Not Found"],
-        ["Environment Files", "✓ Present" if infra.get('env_files') else "✗ Not Found"],
+        ["Docker", "✓" if infra.get('docker_used') else "✗"],
+        ["CI/CD", "✓" if infra.get('ci_cd_detected') else "✗"],
     ]
     
-    t = Table(infra_data, colWidths=[3*inch, 2*inch])
+    t = Table(infra_data, colWidths=[3*inch, 1.5*inch])
     t.setStyle(create_table_style())
     story.append(t)
-    story.append(Spacer(1, 0.2*inch))
-    
-    # Build tools
-    if infra.get('build_tools'):
-        story.append(Paragraph("Build Tools Detected:", styles['Normal']))
-        for tool in infra['build_tools']:
-            story.append(Paragraph(f"• {sanitize_text(tool)}", styles['ListItem']))
-        story.append(Spacer(1, 0.2*inch))
+    story.append(Spacer(1, 0.15*inch))
 
 
-def add_file_structure_section(story: List, results: Dict, styles: Dict):
-    """Add file structure and classification section."""
-    story.append(PageBreak())
-    story.append(Paragraph("5. FILE STRUCTURE & CLASSIFICATION", styles['SectionHeader']))
+def add_file_structure_page(story: List, results: Dict, styles: Dict):
+    """Add file structure and classification page."""
+    story.append(Paragraph("4. FILE STRUCTURE & CLASSIFICATION", styles['SectionHeader']))
     story.append(Spacer(1, 0.1*inch))
     
     classification = results.get("classification", {})
@@ -436,7 +405,7 @@ def add_file_structure_section(story: List, results: Dict, styles: Dict):
     
     for cat_name, files in categories.items():
         if files:
-            story.append(Paragraph(f"5.{list(categories.keys()).index(cat_name) + 1} {cat_name} ({len(files)} files)", styles['SubHeader']))
+            story.append(Paragraph(f"4.{list(categories.keys()).index(cat_name) + 1} {cat_name} ({len(files)} files)", styles['SubHeader']))
             for file_path in sorted(files)[:20]:  # Limit to 20 files per category
                 story.append(Paragraph(f"• {sanitize_text(file_path)}", styles['CodeBlock']))
             if len(files) > 20:
@@ -444,15 +413,13 @@ def add_file_structure_section(story: List, results: Dict, styles: Dict):
             story.append(Spacer(1, 0.1*inch))
 
 
-def add_detailed_source_analysis(story: List, results: Dict, styles: Dict):
-    """Add comprehensive source code analysis for each file."""
-    story.append(PageBreak())
-    story.append(Paragraph("6. DETAILED SOURCE CODE ANALYSIS", styles['SectionHeader']))
+def add_detailed_source_analysis_pages(story: List, results: Dict, styles: Dict):
+    """Add detailed source code analysis across multiple pages."""
+    story.append(Paragraph("5. DETAILED SOURCE CODE ANALYSIS", styles['SectionHeader']))
     story.append(Spacer(1, 0.1*inch))
     
     story.append(Paragraph(
-        "This section provides a comprehensive analysis of each source file, including all classes, "
-        "methods, functions, components, routes, and their descriptions.",
+        "Comprehensive analysis of each source file with all classes, methods, functions, components, and routes.",
         styles['Description']
     ))
     story.append(Spacer(1, 0.2*inch))
@@ -464,7 +431,7 @@ def add_detailed_source_analysis(story: List, results: Dict, styles: Dict):
         language = file_analysis.get("language", "Unknown")
         
         # File header
-        story.append(Paragraph(f"6.{idx} {sanitize_text(file_path)}", styles['SubHeader']))
+        story.append(Paragraph(f"5.{idx} {sanitize_text(file_path)}", styles['SubHeader']))
         story.append(Paragraph(f"Language: <b>{sanitize_text(language)}</b>", styles['Metadata']))
         story.append(Spacer(1, 0.05*inch))
         
@@ -515,15 +482,20 @@ def add_detailed_source_analysis(story: List, results: Dict, styles: Dict):
                 
                 story.append(Spacer(1, 0.05*inch))
         
-        # Functions
+        # Functions - ENHANCED with detailed descriptions
         functions = file_analysis.get("functions", [])
         if functions:
             story.append(Paragraph(f"<b>Functions ({len(functions)}):</b>", styles['Normal']))
-            for func in functions[:15]:  # Limit to 15 functions
+            story.append(Spacer(1, 0.07*inch))
+            
+            for func_idx, func in enumerate(functions, 1):  # Show ALL functions
                 func_name = func.get("name", "Unknown")
                 params = func.get("parameters", [])
                 func_desc = func.get("description", "")
                 decorators = func.get("decorators", [])
+                returns = func.get("returns", "")
+                docstring = func.get("docstring", "")
+                is_async = func.get("is_async", False)
                 
                 param_str = ", ".join([sanitize_text(str(p)) for p in params])
                 
@@ -532,18 +504,47 @@ def add_detailed_source_analysis(story: List, results: Dict, styles: Dict):
                     dec_str = " ".join([f"@{sanitize_text(d)}" for d in decorators])
                     story.append(Paragraph(f"  {dec_str}", styles['CodeBlock']))
                 
+                # Function signature
+                async_prefix = "async " if is_async else ""
                 story.append(Paragraph(
-                    f"  • <b>{sanitize_text(func_name)}</b>({param_str})",
+                    f"  {func_idx}. <b>{async_prefix}{sanitize_text(func_name)}</b>({param_str})",
                     styles['CodeBlock']
                 ))
                 
-                if func_desc:
-                    story.append(Paragraph(f"    {sanitize_text(func_desc[:200])}", styles['Description']))
+                # Return type
+                if returns:
+                    story.append(Paragraph(f"     Returns: {sanitize_text(returns)}", styles['Metadata']))
                 
-                story.append(Spacer(1, 0.03*inch))
-            
-            if len(functions) > 15:
-                story.append(Paragraph(f"... and {len(functions) - 15} more functions", styles['Metadata']))
+                # Main description
+                if func_desc:
+                    story.append(Paragraph(f"     📝 {sanitize_text(func_desc[:300])}", styles['Description']))
+                
+                # Additional docstring
+                if docstring and docstring != func_desc:
+                    story.append(Paragraph(f"     📄 {sanitize_text(docstring[:250])}", styles['Description']))
+                
+                # Parameters with descriptions if available
+                if params and len(params) > 0:
+                    param_info = func.get("param_descriptions", {})
+                    story.append(Paragraph(f"     Parameters: {len(params)}", styles['Metadata']))
+                    for param in params[:8]:  # Limit params shown
+                        param_desc = param_info.get(str(param), "") if param_info else ""
+                        if param_desc:
+                            story.append(Paragraph(
+                                f"       • <b>{sanitize_text(str(param))}</b>: {sanitize_text(param_desc[:150])}",
+                                styles['Description']
+                            ))
+                        else:
+                            story.append(Paragraph(
+                                f"       • {sanitize_text(str(param))}",
+                                styles['Metadata']
+                            ))
+                
+                story.append(Spacer(1, 0.08*inch))
+                
+                # Page break every 8 functions to manage page space
+                if func_idx % 8 == 0 and func_idx < len(functions):
+                    story.append(PageBreak())
         
         # React Components
         components = file_analysis.get("components", [])
@@ -602,10 +603,9 @@ def add_detailed_source_analysis(story: List, results: Dict, styles: Dict):
             story.append(PageBreak())
 
 
-def add_config_analysis(story: List, results: Dict, styles: Dict):
-    """Add configuration files analysis."""
-    story.append(PageBreak())
-    story.append(Paragraph("7. CONFIGURATION FILES ANALYSIS", styles['SectionHeader']))
+def add_config_analysis_page(story: List, results: Dict, styles: Dict):
+    """Add configuration files analysis page."""
+    story.append(Paragraph("6. CONFIGURATION FILES ANALYSIS", styles['SectionHeader']))
     story.append(Spacer(1, 0.1*inch))
     
     config_analysis = results.get("config_analysis", [])
@@ -618,7 +618,7 @@ def add_config_analysis(story: List, results: Dict, styles: Dict):
         file_path = config.get("file_path", "Unknown")
         config_type = config.get("config_type", "Unknown")
         
-        story.append(Paragraph(f"7.{idx} {sanitize_text(file_path)}", styles['SubHeader']))
+        story.append(Paragraph(f"6.{idx} {sanitize_text(file_path)}", styles['SubHeader']))
         story.append(Paragraph(f"Type: <b>{sanitize_text(config_type)}</b>", styles['Metadata']))
         story.append(Spacer(1, 0.05*inch))
         
@@ -658,16 +658,15 @@ def add_config_analysis(story: List, results: Dict, styles: Dict):
         story.append(Spacer(1, 0.15*inch))
 
 
-def add_architecture_insights(story: List, results: Dict, styles: Dict):
-    """Add architecture insights section."""
-    story.append(PageBreak())
-    story.append(Paragraph("8. ARCHITECTURE INSIGHTS", styles['SectionHeader']))
+def add_architecture_insights_page(story: List, results: Dict, styles: Dict):
+    """Add architecture insights page."""
+    story.append(Paragraph("7. ARCHITECTURE INSIGHTS", styles['SectionHeader']))
     story.append(Spacer(1, 0.1*inch))
     
     graphs = results.get("graphs", {})
     
     if graphs.get("dependency_graph"):
-        story.append(Paragraph("8.1 Dependency Graph", styles['SubHeader']))
+        story.append(Paragraph("7.1 Dependency Graph", styles['SubHeader']))
         story.append(Paragraph(
             "A dependency graph has been generated showing the relationships between modules and components.",
             styles['Description']
@@ -675,7 +674,7 @@ def add_architecture_insights(story: List, results: Dict, styles: Dict):
         story.append(Spacer(1, 0.1*inch))
     
     if graphs.get("call_graph"):
-        story.append(Paragraph("8.2 Call Graph", styles['SubHeader']))
+        story.append(Paragraph("7.2 Call Graph", styles['SubHeader']))
         story.append(Paragraph(
             "A call graph has been generated showing function call relationships.",
             styles['Description']
@@ -683,7 +682,7 @@ def add_architecture_insights(story: List, results: Dict, styles: Dict):
         story.append(Spacer(1, 0.1*inch))
     
     # Architecture patterns detected
-    story.append(Paragraph("8.3 Detected Patterns", styles['SubHeader']))
+    story.append(Paragraph("7.3 Detected Patterns", styles['SubHeader']))
     
     meta = results["master_json"]["project_metadata"]
     patterns = []
@@ -701,56 +700,20 @@ def add_architecture_insights(story: List, results: Dict, styles: Dict):
     else:
         story.append(Paragraph("No specific architectural patterns detected.", styles['Description']))
     
-    story.append(Spacer(1, 0.2*inch))
+    story.append(Spacer(1, 0.15*inch))
 
 
-def add_ai_review(story: List, results: Dict, styles: Dict):
-    """Add AI architectural review section."""
-    story.append(PageBreak())
-    story.append(Paragraph("9. AI ARCHITECTURAL REVIEW", styles['SectionHeader']))
-    story.append(Spacer(1, 0.1*inch))
-    
-    ai_review = results.get("ai_review", {})
-    
-    if ai_review and ai_review.get("success"):
-        review_text = ai_review.get("review", "")
-        
-        # Clean and format review text
-        review_text = review_text.replace("#", "").replace("*", "")
-        
-        paragraphs = review_text.split("\n\n")
-        for para in paragraphs:
-            if para.strip():
-                story.append(Paragraph(sanitize_text(para.strip()), styles['Description']))
-                story.append(Spacer(1, 0.1*inch))
-    else:
-        story.append(Paragraph(
-            "AI architectural review is currently unavailable. The report includes comprehensive "
-            "semantic analysis and pattern-based insights as an alternative.",
-            styles['Description']
-        ))
-        story.append(Spacer(1, 0.1*inch))
-        
-        story.append(Paragraph(
-            "The semantic analysis engine provides intelligent descriptions based on code patterns, "
-            "naming conventions, and structural analysis, delivering valuable insights without "
-            "external AI dependencies.",
-            styles['Description']
-        ))
-
-
-def add_appendix(story: List, results: Dict, styles: Dict):
+def add_appendix_page(story: List, results: Dict, styles: Dict):
     """Add appendix with additional information."""
-    story.append(PageBreak())
-    story.append(Paragraph("10. APPENDIX", styles['SectionHeader']))
+    story.append(Paragraph("8. APPENDIX", styles['SectionHeader']))
     story.append(Spacer(1, 0.1*inch))
     
-    story.append(Paragraph("10.1 Report Generation Details", styles['SubHeader']))
+    story.append(Paragraph("8.1 Report Generation Details", styles['SubHeader']))
     story.append(Paragraph(f"Generated: {datetime.now().strftime('%B %d, %Y at %H:%M:%S')}", styles['Normal']))
     story.append(Paragraph("Tool: Repository Intelligence Engine v1.0", styles['Normal']))
     story.append(Spacer(1, 0.1*inch))
     
-    story.append(Paragraph("10.2 Analysis Methodology", styles['SubHeader']))
+    story.append(Paragraph("8.2 Analysis Methodology", styles['SubHeader']))
     methodology = """
     This report was generated through a multi-stage analysis pipeline:
     1. Repository fetching via GitHub API
@@ -764,7 +727,7 @@ def add_appendix(story: List, results: Dict, styles: Dict):
     story.append(Paragraph(methodology, styles['Description']))
     story.append(Spacer(1, 0.1*inch))
     
-    story.append(Paragraph("10.3 Disclaimer", styles['SubHeader']))
+    story.append(Paragraph("8.3 Disclaimer", styles['SubHeader']))
     disclaimer = """
     This automated analysis provides insights based on static code analysis and pattern recognition.
     While comprehensive, it may not capture all architectural nuances or context-specific design decisions.
@@ -780,6 +743,8 @@ def add_appendix(story: List, results: Dict, styles: Dict):
 def generate_comprehensive_pdf_report(results: Dict) -> bytes:
     """
     Generate a comprehensive, well-structured PDF report with detailed analysis.
+    Uses page-based formatting to optimize content distribution.
+    Automatically manages page breaks based on available space.
     
     Args:
         results: Analysis results dictionary containing all data
@@ -802,19 +767,17 @@ def generate_comprehensive_pdf_report(results: Dict) -> bytes:
     story = []
     styles = create_custom_styles()
     
-    # Build the report sections
+    # Build the report sections with page management
+    # NOTE: TOC removed for more compact format
     add_cover_page(story, results, styles)
-    add_table_of_contents(story, results, styles)
-    add_executive_summary(story, results, styles)
-    add_project_overview(story, results, styles)
-    add_dependencies_section(story, results, styles)
-    add_infrastructure_section(story, results, styles)
-    add_file_structure_section(story, results, styles)
-    add_detailed_source_analysis(story, results, styles)
-    add_config_analysis(story, results, styles)
-    add_architecture_insights(story, results, styles)
-    add_ai_review(story, results, styles)
-    add_appendix(story, results, styles)
+    add_executive_summary_page(story, results, styles)
+    add_project_overview_page(story, results, styles)
+    add_dependencies_infrastructure_page(story, results, styles)
+    add_file_structure_page(story, results, styles)
+    add_detailed_source_analysis_pages(story, results, styles)
+    add_config_analysis_page(story, results, styles)
+    add_architecture_insights_page(story, results, styles)
+    add_appendix_page(story, results, styles)
     
     # Build the PDF
     doc.build(story)

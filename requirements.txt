@@ -2,3 +2,5 @@ streamlit
 requests
 graphviz
 reportlab
+transformers
+torch
