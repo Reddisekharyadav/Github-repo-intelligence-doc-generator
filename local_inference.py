@@ -1,47 +1,151 @@
 """
-Local Inference Engine
-Generates intelligent content using pre-trained models from HuggingFace Transformers library.
-Runs entirely offline without API calls.
+HuggingFace Inference API Engine
+Generates intelligent content using HuggingFace's Inference API.
+Uses cloud-based models for better performance without local downloads.
 """
 
 from typing import Optional
 import re
+import os
 
 try:
-    from transformers import pipeline, AutoTokenizer, AutoModelForSeq2SeqLM
-    HAS_TRANSFORMERS = True
+    from huggingface_hub import InferenceClient
+    HAS_HF_HUB = True
 except ImportError:
-    HAS_TRANSFORMERS = False
+    HAS_HF_HUB = False
 
 
 class LocalInferenceEngine:
-    """Uses pre-trained models for intelligent content generation."""
+    """Uses HuggingFace Inference API for intelligent content generation."""
     
-    def __init__(self):
-        """Initialize the inference engine with pre-trained models."""
-        self.generator = None
+    # Best models for code understanding and text generation
+    MODELS = [
+        "meta-llama/Llama-3.1-8B-Instruct",      # Verified working with this token
+        "meta-llama/Meta-Llama-3-8B-Instruct",   # Alternative instruct model
+        "Qwen/Qwen2.5-7B-Instruct",              # Strong instruction model
+        "mistralai/Mistral-7B-Instruct-v0.2",    # Fallback if provider supports it
+    ]
+    
+    def __init__(self, api_token: Optional[str] = None):
+        """
+        Initialize the inference engine with HuggingFace API.
+        
+        Args:
+            api_token: HuggingFace API token. If None, tries to load from secrets.toml or env
+        """
+        self.api_token = api_token or self._load_token()
+        self.client = None
+        self.current_model = None
         self.initialize_models()
     
+    def _load_token(self) -> Optional[str]:
+        """Load HuggingFace token from secrets.toml or environment."""
+        # Try environment variable
+        token = os.getenv("HF_API_TOKEN") or os.getenv("HUGGINGFACE_TOKEN") or os.getenv("HF_TOKEN")
+        if token:
+            return token
+        
+        # Try secrets.toml in .streamlit folder
+        try:
+            import toml
+            # Get the directory where this file is located
+            current_dir = os.path.dirname(os.path.abspath(__file__))
+            secrets_path = os.path.join(current_dir, ".streamlit", "secrets.toml")
+            
+            if os.path.exists(secrets_path):
+                secrets = toml.load(secrets_path)
+                token = secrets.get("HF_API_TOKEN")
+                if token:
+                    print(f"✓ Loaded HF_API_TOKEN from secrets.toml")
+                    return token
+        except Exception as e:
+            print(f"Warning: Could not load secrets.toml: {e}")
+        
+        return None
+    
     def initialize_models(self):
-        """Initialize transformers pipelines for different tasks."""
-        if not HAS_TRANSFORMERS:
+        """Initialize API connection and test models."""
+        if not HAS_HF_HUB:
+            print("Warning: huggingface_hub not installed. Using fallback methods.")
+            return
+            
+        if not self.api_token:
+            print("Warning: No HuggingFace API token found. Using fallback methods.")
             return
         
         try:
-            # Use Flan-T5-small for lightweight inference
-            # This model excels at various NLP tasks including summarization
-            self.generator = pipeline(
-                "text2text-generation",
-                model="google/flan-t5-small",
-                device=-1  # CPU only to avoid GPU memory issues
-            )
+            # Create inference client
+            self.client = InferenceClient(token=self.api_token)
+            
+            # Test which model works
+            for model in self.MODELS:
+                try:
+                    # Prefer chat-completions for modern instruct models
+                    response = self.client.chat.completions.create(
+                        model=model,
+                        messages=[{"role": "user", "content": "Say OK"}],
+                        max_tokens=6,
+                        temperature=0.0,
+                    )
+                    if response:
+                        self.current_model = model
+                        print(f"✓ Using HuggingFace model: {model}")
+                        return
+                except Exception as e:
+                    print(f"  Model {model}: {str(e)[:100]}")
+                    continue
         except Exception as e:
-            print(f"Warning: Could not initialize transformers: {e}")
-            self.generator = None
+            print(f"Warning: Could not initialize HF client: {e}")
+        
+        print("Warning: Could not connect to HuggingFace API. Using fallback methods.")
+        self.client = None
+    
+    def _query(self, prompt: str, max_length: int = 150) -> Optional[str]:
+        """
+        Query the HuggingFace Inference API.
+        
+        Args:
+            prompt: Input text
+            max_length: Maximum response length
+            
+        Returns:
+            Generated text or None
+        """
+        if not self.client or not self.current_model:
+            return None
+        
+        try:
+            response = self.client.chat.completions.create(
+                model=self.current_model,
+                messages=[{"role": "user", "content": prompt}],
+                max_tokens=max_length,
+                temperature=0.3,
+            )
+
+            if response and response.choices and response.choices[0].message:
+                content = response.choices[0].message.content
+                if content:
+                    return content.strip()
+
+        except Exception as e:
+            try:
+                response = self.client.text_generation(
+                    prompt,
+                    model=self.current_model,
+                    max_new_tokens=max_length,
+                    temperature=0.3,
+                    return_full_text=False
+                )
+                if response and isinstance(response, str):
+                    return response.strip()
+            except Exception:
+                print(f"Error querying model: {str(e)[:100]}")
+        
+        return None
     
     def generate_function_description(self, function_info: dict) -> str:
         """
-        Generate a detailed description of a function using the local model.
+        Generate a detailed description of a function using HuggingFace API.
         
         Args:
             function_info: Dictionary containing function details
@@ -49,9 +153,6 @@ class LocalInferenceEngine:
         Returns:
             str: Detailed description of the function's purpose
         """
-        if not HAS_TRANSFORMERS or not self.generator:
-            return self._fallback_description(function_info)
-        
         try:
             func_name = function_info.get("name", "function")
             params = function_info.get("params", {})
@@ -62,25 +163,18 @@ class LocalInferenceEngine:
             # Build a prompt for the model
             param_str = ", ".join(params.keys()) if params else "no parameters"
             
-            prompt = f"""Analyze and describe this code function concisely:
-Function name: {func_name}
-Language: {language}
-Parameters: {param_str}
-Return type: {returns if returns else 'unknown'}
-Docstring: {docstring if docstring else 'none provided'}
+            prompt = f"""Describe what this {language} function does in 1-2 clear sentences:
+Function: {func_name}({param_str})
+Returns: {returns if returns else 'unknown'}
+{f'Docstring: {docstring[:200]}' if docstring else ''}
 
-Provide a brief technical description of what this function does and why it's important. Keep it to 1-2 sentences."""
+Description:"""
             
-            # Generate using the model
-            result = self.generator(
-                prompt,
-                max_length=100,
-                min_length=20,
-                do_sample=False
-            )
+            # Query HuggingFace API
+            result = self._query(prompt, max_length=100)
             
-            if result and len(result) > 0:
-                return result[0]['generated_text'].strip()
+            if result and len(result) > 10:
+                return result
         except Exception as e:
             print(f"Error generating description: {e}")
         
@@ -96,9 +190,6 @@ Provide a brief technical description of what this function does and why it's im
         Returns:
             str: Summary of the file's purpose
         """
-        if not HAS_TRANSFORMERS or not self.generator:
-            return self._fallback_file_summary(file_info)
-        
         try:
             file_path = file_info.get("file_path", "file.js")
             language = file_info.get("language", "Unknown")
@@ -109,24 +200,18 @@ Provide a brief technical description of what this function does and why it's im
             class_str = ", ".join(classes[:3]) if classes else "none"
             func_str = ", ".join(f['name'] for f in functions[:3] if isinstance(f, dict)) if functions else "none"
             
-            prompt = f"""Analyze this code file and describe its purpose:
+            prompt = f"""Describe what this {language} source file does in 2-3 sentences:
 File: {file_path}
-Language: {language}
-Classes/Components: {class_str}
+Classes: {class_str}
 Functions: {func_str}
 Key imports: {', '.join(str(i)[:30] for i in imports[:5]) if imports else 'standard'}
 
-Provide a clear, concise description of what this file does in the codebase. Keep it to 2-3 sentences."""
+Summary:"""
             
-            result = self.generator(
-                prompt,
-                max_length=150,
-                min_length=30,
-                do_sample=False
-            )
+            result = self._query(prompt, max_length=150)
             
-            if result and len(result) > 0:
-                return result[0]['generated_text'].strip()
+            if result and len(result) > 10:
+                return result
         except Exception as e:
             print(f"Error generating file summary: {e}")
         
@@ -142,9 +227,6 @@ Provide a clear, concise description of what this file does in the codebase. Kee
         Returns:
             str: Detailed description of the class
         """
-        if not HAS_TRANSFORMERS or not self.generator:
-            return self._fallback_class_description(class_info)
-        
         try:
             class_name = class_info.get("name", "Class")
             methods = class_info.get("methods", [])
@@ -153,22 +235,17 @@ Provide a clear, concise description of what this file does in the codebase. Kee
             method_str = ", ".join(methods[:5]) if methods else "none"
             prop_str = ", ".join(properties[:5]) if properties else "none"
             
-            prompt = f"""Describe the purpose of this class:
-Class name: {class_name}
+            prompt = f"""Describe the purpose of this class in 1-2 sentences:
+Class: {class_name}
 Methods: {method_str}
 Properties: {prop_str}
 
-What is the responsibility of this class? Keep it to 1-2 sentences."""
+Purpose:"""
             
-            result = self.generator(
-                prompt,
-                max_length=80,
-                min_length=15,
-                do_sample=False
-            )
+            result = self._query(prompt, max_length=80)
             
-            if result and len(result) > 0:
-                return result[0]['generated_text'].strip()
+            if result and len(result) > 10:
+                return result
         except Exception as e:
             print(f"Error generating class description: {e}")
         

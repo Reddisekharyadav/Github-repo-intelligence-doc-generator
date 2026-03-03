@@ -2,5 +2,5 @@ streamlit
 requests
 graphviz
 reportlab
-transformers
-torch
+toml
+huggingface_hub

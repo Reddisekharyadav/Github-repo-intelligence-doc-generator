@@ -425,6 +425,43 @@ def add_detailed_source_analysis_pages(story: List, results: Dict, styles: Dict)
     story.append(Spacer(1, 0.2*inch))
     
     source_analysis = results.get("source_analysis", [])
+
+    # Repository-level quick summary for decision making
+    total_source_files = len(source_analysis)
+    total_functions = sum(len(item.get("functions", [])) for item in source_analysis)
+    total_classes = sum(len(item.get("classes", [])) for item in source_analysis)
+
+    files_by_function_count = sorted(
+        source_analysis,
+        key=lambda item: len(item.get("functions", [])),
+        reverse=True
+    )
+    top_function_files = [
+        item.get("file_path", "Unknown")
+        for item in files_by_function_count
+        if len(item.get("functions", [])) > 0
+    ][:5]
+
+    if total_source_files <= 10 and total_functions <= 40:
+        scan_recommendation = "This repository appears compact enough for a full code review."
+    elif total_functions <= 120:
+        scan_recommendation = "Start with high-function files first, then review the rest as needed."
+    else:
+        scan_recommendation = "Use a targeted review strategy; full end-to-end reading may be time-intensive."
+
+    repo_summary_text = (
+        f"<b>Repository Quick Summary:</b> {total_source_files} analyzed source files, "
+        f"{total_functions} functions/methods, and {total_classes} classes/components. "
+        f"{sanitize_text(scan_recommendation)}"
+    )
+    story.append(Paragraph(repo_summary_text, styles['Description']))
+
+    if top_function_files:
+        story.append(Paragraph("<b>Suggested files to read first:</b>", styles['Normal']))
+        for file_path in top_function_files:
+            story.append(Paragraph(f"• {sanitize_text(file_path)}", styles['ListItem']))
+
+    story.append(Spacer(1, 0.1*inch))
     
     for idx, file_analysis in enumerate(source_analysis, 1):
         file_path = file_analysis.get("file_path", "Unknown")
