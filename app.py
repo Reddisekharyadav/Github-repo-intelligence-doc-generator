@@ -21,6 +21,7 @@ from graph_builder import build_all_graphs
 from ai_interpreter import get_ai_review
 from semantic_inference import generate_description, enhance_function_descriptions
 from pdf_generator import generate_comprehensive_pdf_report
+from local_inference import generate_repo_summary, get_model_status
 
 # ──────────────────────────────────────────────
 # Page Configuration
@@ -62,6 +63,26 @@ st.markdown("""
     .stExpander {
         border: 1px solid #333;
         border-radius: 8px;
+    }
+    .developer-card {
+        background: linear-gradient(135deg, rgba(78, 140, 255, 0.15), rgba(97, 218, 251, 0.12));
+        border: 1px solid rgba(78, 140, 255, 0.45);
+        border-radius: 10px;
+        padding: 0.75rem 0.9rem;
+        margin-top: 0.5rem;
+    }
+    .developer-name {
+        font-weight: 700;
+        color: #cfe3ff;
+        margin: 0 0 0.25rem 0;
+    }
+    .developer-link a {
+        color: #61dafb !important;
+        font-weight: 600;
+        text-decoration: none;
+    }
+    .developer-link a:hover {
+        text-decoration: underline;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -126,19 +147,34 @@ def run_analysis(repo_url: str) -> dict:
         
         # Step 3.5: Enhance with static semantic inference
         st.write("🧠 Generating semantic descriptions...")
-        for analysis in source_analysis:
-            # Generate file-level description
-            description = generate_description(analysis)
-            if description:
-                analysis["semantic_description"] = description
-            
-            # Enhance function descriptions
-            if analysis.get("functions"):
-                analysis["functions"] = enhance_function_descriptions(
-                    analysis["functions"],
-                    analysis["file_path"],
-                    analysis.get("language", "")
-                )
+        semantic_progress = st.progress(0, text="Preparing semantic analysis...")
+        total_source = len(source_analysis)
+
+        for idx, analysis in enumerate(source_analysis, 1):
+            file_path = analysis.get("file_path", "unknown")
+            semantic_progress.progress(
+                idx / total_source if total_source else 1.0,
+                text=f"Semantic {idx}/{total_source}: {file_path}",
+            )
+
+            try:
+                # Generate file-level description
+                description = generate_description(analysis)
+                if description:
+                    analysis["semantic_description"] = description
+
+                # Enhance function descriptions (bounded AI calls + fallback)
+                if analysis.get("functions"):
+                    analysis["functions"] = enhance_function_descriptions(
+                        analysis["functions"],
+                        analysis["file_path"],
+                        analysis.get("language", ""),
+                        max_model_calls=3,
+                    )
+            except Exception as e:
+                print(f"Semantic enhancement failed for {file_path}: {e}")
+
+        semantic_progress.progress(1.0, text="Semantic descriptions completed")
 
         # Step 4: Parse config files
         st.write("⚙️ Analyzing configurations...")
@@ -289,6 +325,51 @@ def render_project_overview(results: dict):
 
     if badges:
         st.markdown("**Detected Frameworks:** " + " · ".join(f"`{b}`" for b in badges))
+
+
+def render_repo_read_guidance(results: dict):
+    """Render top-level AI guidance: full repository read vs targeted read."""
+    st.header("🧠 AI Repository Read Guidance")
+
+    source_analysis = results.get("source_analysis", [])
+    total_source_files = len(source_analysis)
+    total_functions = sum(len(item.get("functions", [])) for item in source_analysis)
+    total_classes = sum(
+        len(item.get("classes", [])) + len(item.get("components", []))
+        for item in source_analysis
+    )
+
+    files_by_function_count = sorted(
+        source_analysis,
+        key=lambda item: len(item.get("functions", [])),
+        reverse=True
+    )
+    top_function_files = [
+        item.get("file_path", "Unknown")
+        for item in files_by_function_count
+        if len(item.get("functions", [])) > 0
+    ][:5]
+
+    repo_info = {
+        "total_source_files": total_source_files,
+        "total_functions": total_functions,
+        "total_classes": total_classes,
+        "top_function_files": top_function_files,
+    }
+
+    summary_text = generate_repo_summary(repo_info)
+    status = get_model_status()
+    model_name = status.get("model") or "Fallback heuristic"
+
+    st.info(summary_text)
+    st.caption(f"Model: {model_name}")
+    if status.get("hf_disabled"):
+        st.warning(f"Hugging Face API unavailable: {status.get('reason', 'quota/billing issue')}. Using fallback summaries.")
+
+    if top_function_files:
+        st.markdown("**Suggested files to start with:**")
+        for file_path in top_function_files:
+            st.markdown(f"- `{file_path}`")
 
 
 def render_dependencies(results: dict):
@@ -634,6 +715,22 @@ def render_sidebar():
         )
 
         st.divider()
+        st.markdown("### 👨‍💻 Developer")
+        st.markdown(
+            """
+            <div class="developer-card">
+                <p class="developer-name">Reddisekharyadav</p>
+                <p class="developer-link">
+                    <a href="https://github.com/Reddisekharyadav" target="_blank">
+                        🔗 github.com/Reddisekharyadav
+                    </a>
+                </p>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+        st.divider()
         st.caption("Built with Streamlit · Graphviz · Hugging Face")
 
 
@@ -702,6 +799,8 @@ def main():
     if "analysis_results" in st.session_state:
         results = st.session_state["analysis_results"]
 
+        st.divider()
+        render_repo_read_guidance(results)
         st.divider()
         render_project_overview(results)
         st.divider()
