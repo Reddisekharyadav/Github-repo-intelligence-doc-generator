@@ -343,3 +343,83 @@ def generate_class_description(class_info: dict) -> str:
     """Generate description for a class."""
     engine = get_inference_engine()
     return engine.generate_class_description(class_info)
+
+
+def generate_repo_summary(repo_info: dict) -> str:
+    """
+    Generate an intelligent summary of the entire repository.
+    
+    Args:
+        repo_info: Dictionary containing repository metrics
+        
+    Returns:
+        str: Summary of the repository's purpose and structure
+    """
+    try:
+        total_files = repo_info.get("total_source_files", 0)
+        total_functions = repo_info.get("total_functions", 0)
+        total_classes = repo_info.get("total_classes", 0)
+        top_files = repo_info.get("top_function_files", [])
+        
+        engine = get_inference_engine()
+        
+        # Build prompt for AI model
+        top_files_str = ", ".join(top_files[:3]) if top_files else "various"
+        prompt = f"""Summarize what this repository does in 1-2 sentences:
+Total Files: {total_files}
+Total Functions: {total_functions}
+Total Classes: {total_classes}
+Key Files: {top_files_str}
+
+Summary:"""
+        
+        result = engine._query(prompt, max_length=120) if engine.client else None
+        
+        if result and len(result) > 20:
+            return result
+    except Exception as e:
+        print(f"Error generating repo summary: {e}")
+    
+    # Fallback summary
+    parts = []
+    if total_files:
+        parts.append(f"{total_files} source files")
+    if total_classes:
+        parts.append(f"{total_classes} classes")
+    if total_functions:
+        parts.append(f"{total_functions} functions")
+    
+    if parts:
+        return f"This repository contains {', '.join(parts)} organized across multiple modules."
+    return "A software project with multiple code files and components."
+
+
+def get_model_status() -> dict:
+    """
+    Get the current status of the inference model.
+    
+    Returns:
+        dict: Status dictionary with keys:
+            - model: Current model name (or None if unavailable)
+            - hf_disabled: Boolean indicating if HF API is disabled
+            - reason: Reason if disabled
+    """
+    engine = get_inference_engine()
+    
+    status = {
+        "model": engine.current_model,
+        "hf_disabled": False,
+        "reason": None,
+    }
+    
+    if not engine.client or not engine.current_model:
+        status["hf_disabled"] = True
+        
+        if not HAS_HF_HUB:
+            status["reason"] = "huggingface_hub library not installed"
+        elif not engine.api_token:
+            status["reason"] = "HF_API_TOKEN not configured"
+        else:
+            status["reason"] = "Could not connect to HuggingFace API"
+    
+    return status
