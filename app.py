@@ -21,7 +21,33 @@ from graph_builder import build_all_graphs
 from ai_interpreter import get_ai_review
 from semantic_inference import generate_description, enhance_function_descriptions
 from pdf_generator import generate_comprehensive_pdf_report
-from local_inference import generate_repo_summary, get_model_status
+
+try:
+    from local_inference import generate_repo_summary, get_model_status
+except ImportError:
+    # Backward compatibility for deployments with older local_inference.py
+    def generate_repo_summary(repo_info: dict) -> str:
+        total_files = repo_info.get("total_source_files", 0)
+        total_functions = repo_info.get("total_functions", 0)
+        top_files = repo_info.get("top_function_files", [])
+
+        if total_files <= 10 and total_functions <= 40:
+            recommendation = "Read the full repository; it is compact and manageable."
+        elif total_functions <= 120:
+            recommendation = "Start with a targeted read first, then expand to full review if needed."
+        else:
+            recommendation = "Use targeted reading first; full sequential reading will be time-intensive."
+
+        if top_files:
+            return f"{recommendation} Begin with: {', '.join(top_files[:3])}."
+        return recommendation
+
+    def get_model_status() -> dict:
+        return {
+            "model": None,
+            "hf_disabled": True,
+            "reason": "Local inference module is running in compatibility mode",
+        }
 
 # ──────────────────────────────────────────────
 # Page Configuration
@@ -107,8 +133,8 @@ def _get_github_token() -> Optional[str]:
     return _get_secret("GITHUB_TOKEN")
 
 
-def _get_hf_token() -> Optional[str]:
-    return _get_secret("HF_API_TOKEN")
+def _get_openai_token() -> Optional[str]:
+    return _get_secret("OPENAI_API_KEY")
 
 
 # ──────────────────────────────────────────────
@@ -186,6 +212,31 @@ def run_analysis(repo_url: str) -> dict:
 
         status.update(label="Analysis complete!", state="complete")
 
+    # Generate repo summary
+    total_functions = sum(len(item.get("functions", [])) for item in source_analysis)
+    total_classes = sum(
+        len(item.get("classes", [])) + len(item.get("components", []))
+        for item in source_analysis
+    )
+    files_by_function_count = sorted(
+        source_analysis,
+        key=lambda item: len(item.get("functions", [])),
+        reverse=True
+    )
+    top_function_files = [
+        item.get("file_path", "Unknown")
+        for item in files_by_function_count
+        if len(item.get("functions", [])) > 0
+    ][:5]
+
+    repo_info = {
+        "total_source_files": len(source_analysis),
+        "total_functions": total_functions,
+        "total_classes": total_classes,
+        "top_function_files": top_function_files,
+    }
+    repo_summary = generate_repo_summary(repo_info)
+
     # Build master JSON
     master_json = _build_master_json(
         repo_data, classification, primary_lang,
@@ -201,6 +252,7 @@ def run_analysis(repo_url: str) -> dict:
         "config_data": config_data,
         "graphs": graphs,
         "master_json": master_json,
+        "repo_summary": repo_summary,
     }
 
 
@@ -331,14 +383,16 @@ def render_repo_read_guidance(results: dict):
     """Render top-level AI guidance: full repository read vs targeted read."""
     st.header("🧠 AI Repository Read Guidance")
 
-    source_analysis = results.get("source_analysis", [])
-    total_source_files = len(source_analysis)
-    total_functions = sum(len(item.get("functions", [])) for item in source_analysis)
-    total_classes = sum(
-        len(item.get("classes", [])) + len(item.get("components", []))
-        for item in source_analysis
-    )
+    summary_text = results.get("repo_summary", "No AI summary generated.")
+    status = get_model_status()
+    model_name = status.get("model") or "Fallback heuristic"
 
+    st.info(summary_text)
+    st.caption(f"Model: {model_name}")
+    if status.get("hf_disabled"):
+        st.warning(f"OpenAI API unavailable: {status.get('reason', 'quota/billing issue')}. Using fallback summaries.")
+
+    source_analysis = results.get("source_analysis", [])
     files_by_function_count = sorted(
         source_analysis,
         key=lambda item: len(item.get("functions", [])),
@@ -349,22 +403,6 @@ def render_repo_read_guidance(results: dict):
         for item in files_by_function_count
         if len(item.get("functions", [])) > 0
     ][:5]
-
-    repo_info = {
-        "total_source_files": total_source_files,
-        "total_functions": total_functions,
-        "total_classes": total_classes,
-        "top_function_files": top_function_files,
-    }
-
-    summary_text = generate_repo_summary(repo_info)
-    status = get_model_status()
-    model_name = status.get("model") or "Fallback heuristic"
-
-    st.info(summary_text)
-    st.caption(f"Model: {model_name}")
-    if status.get("hf_disabled"):
-        st.warning(f"Hugging Face API unavailable: {status.get('reason', 'quota/billing issue')}. Using fallback summaries.")
 
     if top_function_files:
         st.markdown("**Suggested files to start with:**")
@@ -602,14 +640,14 @@ def render_architecture_diagrams(results: dict):
 def render_ai_review(results: dict):
     """Render AI architectural review section."""
     st.header("🤖 AI Architectural Review")
-    hf_token = _get_hf_token()
+    openai_token = _get_openai_token()
 
-    if not hf_token:
+    if not openai_token:
         st.warning(
-            "**Hugging Face API token not configured.**\n\n"
+            "**OpenAI API token not configured.**\n\n"
             "To enable AI-powered architectural review:\n"
-            "1. Get a token from [huggingface.co/settings/tokens](https://huggingface.co/settings/tokens)\n"
-            "2. Set `HF_API_TOKEN` environment variable before starting Streamlit\n\n"
+            "1. Get an API key from [platform.openai.com](https://platform.openai.com/)\n"
+            "2. Set `OPENAI_API_KEY` environment variable before starting Streamlit\n\n"
             "✅ **Static semantic analysis completed successfully** — see File Breakdown section for detailed insights."
         )
         return
@@ -742,13 +780,13 @@ def main():
     """Main application entry point."""
     # Log API token status to console
     github_token = _get_github_token()
-    hf_token = _get_hf_token()
+    openai_token = _get_openai_token()
     
     print("\n" + "="*60)
-    print("🔧 Repo Intelligence Engine - API Configuration")
+    print("[INFO] Repo Intelligence Engine - API Configuration")
     print("="*60)
-    print(f"GitHub Token: {'✅ Configured' if github_token else '❌ Not Set (rate limited)'}")
-    print(f"HF API Token: {'✅ Configured' if hf_token else '❌ Not Set (no AI review)'}")
+    print(f"GitHub Token: {'[OK] Configured' if github_token else '[X] Not Set (rate limited)'}")
+    print(f"OpenAI API Token: {'[OK] Configured' if openai_token else '[X] Not Set (no AI review)'}")
     print("="*60 + "\n")
     
     render_header()
@@ -814,10 +852,10 @@ def main():
         st.divider()
         
         # AI Review with result storage
-        hf_token = _get_hf_token()
-        if hf_token and "ai_review" not in results:
+        openai_token = _get_openai_token()
+        if openai_token and "ai_review" not in results:
             with st.spinner("🧠 Generating AI architectural review..."):
-                ai_result = get_ai_review(results["master_json"], hf_token=hf_token)
+                ai_result = get_ai_review(results["master_json"], openai_token=openai_token)
                 results["ai_review"] = ai_result
         
         render_ai_review(results)
