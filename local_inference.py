@@ -1,12 +1,12 @@
 """
-HuggingFace Inference API Engine
-Generates intelligent content using HuggingFace's Inference API.
-Uses cloud-based models for better performance without local downloads.
+Multi-provider inference engine.
+Supports OpenAI, Google Gemini, and Hugging Face with heuristic fallbacks.
 """
 
 from typing import Optional
-import re
 import os
+
+import requests
 
 try:
     from huggingface_hub import InferenceClient
@@ -16,71 +16,124 @@ except ImportError:
 
 
 class LocalInferenceEngine:
-    """Uses HuggingFace Inference API for intelligent content generation."""
+    """Uses configured AI providers for intelligent content generation."""
     
     # Best models for code understanding and text generation
-    MODELS = [
+    HF_MODELS = [
         "meta-llama/Llama-3.1-8B-Instruct",      # Verified working with this token
         "meta-llama/Meta-Llama-3-8B-Instruct",   # Alternative instruct model
         "Qwen/Qwen2.5-7B-Instruct",              # Strong instruction model
         "mistralai/Mistral-7B-Instruct-v0.2",    # Fallback if provider supports it
     ]
     
-    def __init__(self, api_token: Optional[str] = None):
+    def __init__(self, api_token: Optional[str] = None, provider: Optional[str] = None):
         """
-        Initialize the inference engine with HuggingFace API.
+        Initialize the inference engine with the configured AI provider.
         
         Args:
-            api_token: HuggingFace API token. If None, tries to load from secrets.toml or env
+            api_token: Provider token override. If None, tries secrets.toml or env.
+            provider: Provider override. Supported: openai, gemini, huggingface.
         """
-        self.api_token = api_token or self._load_token()
+        settings = self._load_settings()
+        self.provider = (provider or settings["provider"] or "").lower() or None
+        self.api_token = api_token or settings["token"]
         self.client = None
-        self.current_model = None
+        self.current_model = settings["model"]
+        self.reason = None
         self.initialize_models()
     
-    def _load_token(self) -> Optional[str]:
-        """Load HuggingFace token from secrets.toml or environment."""
-        # Try environment variable
-        token = os.getenv("HF_API_TOKEN") or os.getenv("HUGGINGFACE_TOKEN") or os.getenv("HF_TOKEN")
-        if token:
-            return token
-        
-        # Try secrets.toml in .streamlit folder
+    def _load_settings(self) -> dict:
+        """Load provider settings from secrets.toml or environment."""
+        secrets = {}
+
         try:
             import toml
-            # Get the directory where this file is located
             current_dir = os.path.dirname(os.path.abspath(__file__))
             secrets_path = os.path.join(current_dir, ".streamlit", "secrets.toml")
             
             if os.path.exists(secrets_path):
                 secrets = toml.load(secrets_path)
-                token = secrets.get("HF_API_TOKEN")
-                if token:
-                    print(f"✓ Loaded HF_API_TOKEN from secrets.toml")
-                    return token
         except Exception as e:
             print(f"Warning: Could not load secrets.toml: {e}")
+
+        provider = (os.getenv("AI_PROVIDER") or secrets.get("AI_PROVIDER") or "").lower() or None
+
+        openai_key = os.getenv("OPENAI_API_KEY") or secrets.get("OPENAI_API_KEY")
+        gemini_key = (
+            os.getenv("GEMINI_API_KEY")
+            or os.getenv("GOOGLE_API_KEY")
+            or secrets.get("GEMINI_API_KEY")
+            or secrets.get("GOOGLE_API_KEY")
+        )
+        hf_key = (
+            os.getenv("HF_API_TOKEN")
+            or os.getenv("HUGGINGFACE_TOKEN")
+            or os.getenv("HF_TOKEN")
+            or secrets.get("HF_API_TOKEN")
+        )
+
+        openai_model = os.getenv("OPENAI_MODEL") or secrets.get("OPENAI_MODEL") or "gpt-4o-mini"
+        gemini_model = os.getenv("GEMINI_MODEL") or secrets.get("GEMINI_MODEL") or "gemini-1.5-pro"
+
+        providers = {
+            "openai": {"token": openai_key, "model": openai_model},
+            "gemini": {"token": gemini_key, "model": gemini_model},
+            "huggingface": {"token": hf_key, "model": None},
+        }
+
+        if provider in providers:
+            return {
+                "provider": provider,
+                "token": providers[provider]["token"],
+                "model": providers[provider]["model"],
+            }
+
+        for candidate in ("openai", "gemini", "huggingface"):
+            if providers[candidate]["token"]:
+                return {
+                    "provider": candidate,
+                    "token": providers[candidate]["token"],
+                    "model": providers[candidate]["model"],
+                }
         
-        return None
+        return {"provider": None, "token": None, "model": None}
     
     def initialize_models(self):
-        """Initialize API connection and test models."""
+        """Initialize the configured provider."""
+        if not self.provider:
+            self.reason = "No AI provider configured"
+            return
+
+        if not self.api_token:
+            self.reason = f"Missing API key for provider '{self.provider}'"
+            return
+
+        if self.provider == "openai":
+            self.client = "openai"
+            self.current_model = self.current_model or "gpt-4o-mini"
+            print(f"✓ Using OpenAI model: {self.current_model}")
+            return
+
+        if self.provider == "gemini":
+            self.client = "gemini"
+            self.current_model = self.current_model or "gemini-1.5-pro"
+            print(f"✓ Using Gemini model: {self.current_model}")
+            return
+
+        if self.provider != "huggingface":
+            self.reason = f"Unsupported AI provider '{self.provider}'"
+            return
+
         if not HAS_HF_HUB:
+            self.reason = "huggingface_hub library not installed"
             print("Warning: huggingface_hub not installed. Using fallback methods.")
             return
-            
-        if not self.api_token:
-            print("Warning: No HuggingFace API token found. Using fallback methods.")
-            return
-        
+
         try:
-            # Create inference client
             self.client = InferenceClient(token=self.api_token)
-            
-            # Test which model works
-            for model in self.MODELS:
+
+            for model in self.HF_MODELS:
                 try:
-                    # Prefer chat-completions for modern instruct models
                     response = self.client.chat.completions.create(
                         model=model,
                         messages=[{"role": "user", "content": "Say OK"}],
@@ -90,19 +143,26 @@ class LocalInferenceEngine:
                     if response:
                         self.current_model = model
                         print(f"✓ Using HuggingFace model: {model}")
+                        self.reason = None
                         return
                 except Exception as e:
                     print(f"  Model {model}: {str(e)[:100]}")
                     continue
         except Exception as e:
+            self.reason = f"Could not initialize HuggingFace client: {e}"
             print(f"Warning: Could not initialize HF client: {e}")
         
+        self.reason = self.reason or "Could not connect to HuggingFace API"
         print("Warning: Could not connect to HuggingFace API. Using fallback methods.")
         self.client = None
+
+    def is_available(self) -> bool:
+        """Return True when an AI provider is configured and ready."""
+        return bool(self.client and self.current_model and self.provider)
     
     def _query(self, prompt: str, max_length: int = 150) -> Optional[str]:
         """
-        Query the HuggingFace Inference API.
+        Query the configured AI provider.
         
         Args:
             prompt: Input text
@@ -111,8 +171,92 @@ class LocalInferenceEngine:
         Returns:
             Generated text or None
         """
-        if not self.client or not self.current_model:
+        if not self.is_available():
             return None
+
+        if self.provider == "openai":
+            return self._query_openai(prompt, max_length)
+
+        if self.provider == "gemini":
+            return self._query_gemini(prompt, max_length)
+
+        return self._query_huggingface(prompt, max_length)
+
+    def _query_openai(self, prompt: str, max_length: int) -> Optional[str]:
+        """Query OpenAI Chat Completions API."""
+        try:
+            response = requests.post(
+                "https://api.openai.com/v1/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {self.api_token}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "model": self.current_model,
+                    "messages": [{"role": "user", "content": prompt}],
+                    "max_tokens": max_length,
+                    "temperature": 0.3,
+                },
+                timeout=60,
+            )
+            if response.status_code != 200:
+                self.reason = f"OpenAI API error {response.status_code}: {response.text[:120]}"
+                print(self.reason)
+                return None
+
+            data = response.json()
+            content = data.get("choices", [{}])[0].get("message", {}).get("content")
+            if isinstance(content, list):
+                return " ".join(
+                    item.get("text", "")
+                    for item in content
+                    if isinstance(item, dict) and item.get("type") == "text"
+                ).strip() or None
+            if isinstance(content, str):
+                return content.strip() or None
+        except Exception as e:
+            self.reason = f"OpenAI query failed: {str(e)[:120]}"
+            print(self.reason)
+
+        return None
+
+    def _query_gemini(self, prompt: str, max_length: int) -> Optional[str]:
+        """Query Google Gemini generateContent API."""
+        try:
+            response = requests.post(
+                f"https://generativelanguage.googleapis.com/v1beta/models/{self.current_model}:generateContent?key={self.api_token}",
+                headers={"Content-Type": "application/json"},
+                json={
+                    "contents": [{"parts": [{"text": prompt}]}],
+                    "generationConfig": {
+                        "temperature": 0.3,
+                        "maxOutputTokens": max_length,
+                    },
+                },
+                timeout=60,
+            )
+            if response.status_code != 200:
+                self.reason = f"Gemini API error {response.status_code}: {response.text[:120]}"
+                print(self.reason)
+                return None
+
+            data = response.json()
+            candidates = data.get("candidates", [])
+            if not candidates:
+                return None
+
+            parts = candidates[0].get("content", {}).get("parts", [])
+            text_parts = [part.get("text", "") for part in parts if isinstance(part, dict)]
+            result = "\n".join(part for part in text_parts if part).strip()
+            return result or None
+        except Exception as e:
+            self.reason = f"Gemini query failed: {str(e)[:120]}"
+            print(self.reason)
+
+        return None
+
+    def _query_huggingface(self, prompt: str, max_length: int) -> Optional[str]:
+        """Query Hugging Face Inference API."""
         
         try:
             response = self.client.chat.completions.create(
@@ -170,7 +314,6 @@ Returns: {returns if returns else 'unknown'}
 
 Description:"""
             
-            # Query HuggingFace API
             result = self._query(prompt, max_length=100)
             
             if result and len(result) > 10:
@@ -373,7 +516,7 @@ Key Files: {top_files_str}
 
 Summary:"""
         
-        result = engine._query(prompt, max_length=120) if engine.client else None
+        result = engine._query(prompt, max_length=120) if engine.is_available() else None
         
         if result and len(result) > 20:
             return result
@@ -400,26 +543,23 @@ def get_model_status() -> dict:
     
     Returns:
         dict: Status dictionary with keys:
+            - provider: Active AI provider
             - model: Current model name (or None if unavailable)
-            - hf_disabled: Boolean indicating if HF API is disabled
+            - available: Boolean indicating whether AI is ready
+            - hf_disabled: Backwards-compatible unavailable flag
             - reason: Reason if disabled
     """
     engine = get_inference_engine()
     
     status = {
+        "provider": engine.provider,
         "model": engine.current_model,
-        "hf_disabled": False,
-        "reason": None,
+        "available": engine.is_available(),
+        "hf_disabled": not engine.is_available(),
+        "reason": engine.reason,
     }
-    
-    if not engine.client or not engine.current_model:
-        status["hf_disabled"] = True
-        
-        if not HAS_HF_HUB:
-            status["reason"] = "huggingface_hub library not installed"
-        elif not engine.api_token:
-            status["reason"] = "HF_API_TOKEN not configured"
-        else:
-            status["reason"] = "Could not connect to HuggingFace API"
-    
+
+    if not status["available"] and not status["reason"]:
+        status["reason"] = "Set OPENAI_API_KEY, GEMINI_API_KEY, or HF_API_TOKEN"
+
     return status
