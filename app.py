@@ -1963,6 +1963,14 @@ def render_sidebar():
                     </a>
                 </p>
             </div>
+            <div class="developer-card">
+                <p class="developer-name">kuruvamunirangadu</p>
+                <p class="developer-link">
+                    <a href="https://github.com/kuruvamunirangadu" target="_blank">
+                        🔗 github.com/kuruvamunirangadu
+                    </a>
+                </p>
+            </div>
             """,
             unsafe_allow_html=True,
         )
