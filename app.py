@@ -1989,19 +1989,29 @@ def render_sidebar():
             authorize_url = _build_github_oauth_authorize_url()
             if authorize_url:
                 st.link_button("Sign in with GitHub", authorize_url, use_container_width=True)
+                st.caption("OAuth token is used for this app session only.")
             else:
-                st.caption(
-                    "OAuth not configured. Set `GITHUB_OAUTH_CLIENT_ID`, "
-                    "`GITHUB_OAUTH_CLIENT_SECRET`, and `GITHUB_OAUTH_REDIRECT_URI`."
+                # OAuth not configured — show manual token input instead
+                st.text_input(
+                    "GitHub Personal Access Token",
+                    type="password",
+                    key="github_token_input",
+                    placeholder="ghp_xxxxxxxxxxxxxxxxxxxx",
+                    on_change=_sync_github_token_from_input,
+                    help="Create a token at github.com/settings/tokens with repo scope.",
                 )
-
-        st.caption("OAuth token is used for this app session only.")
+                manual_token = st.session_state.get("github_token_input", "").strip()
+                if manual_token:
+                    ok, msg = _check_github_token(manual_token)
+                    if ok:
+                        st.success("Token valid ✓")
+                    else:
+                        st.warning(msg)
 
         active_github_token = _get_runtime_github_token()
         st.caption(
             f"GitHub API auth: {'enabled' if active_github_token else 'not configured'}"
         )
-        st.caption("Manual token entry is hidden. Use GitHub Sign In for user-session access.")
 
         st.divider()
         st.markdown("### 👨‍💻 Developer")
