@@ -1438,16 +1438,14 @@ def render_repo_read_guidance(results: dict):
     """Render top-level AI guidance: full repository read vs targeted read."""
     st.header("🧠 AI Repository Read Guidance")
 
-    summary_text = results.get("repo_summary", "No AI summary generated.")
-    status = get_model_status()
-    model_name = status.get("model") or "Fallback heuristic"
-
-    st.info(summary_text)
-    st.caption(f"Model: {model_name}")
-    if status.get("hf_disabled"):
-        st.warning(f"OpenAI API unavailable: {status.get('reason', 'quota/billing issue')}. Using fallback summaries.")
-
     source_analysis = results.get("source_analysis", [])
+    total_source_files = len(source_analysis)
+    total_functions = sum(len(item.get("functions", [])) for item in source_analysis)
+    total_classes = sum(
+        len(item.get("classes", [])) + len(item.get("components", []))
+        for item in source_analysis
+    )
+
     files_by_function_count = sorted(
         source_analysis,
         key=lambda item: len(item.get("functions", [])),
