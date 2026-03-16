@@ -644,66 +644,220 @@ def add_config_analysis_page(story: List, results: Dict, styles: Dict):
     """Add configuration files analysis page."""
     story.append(Paragraph("6. CONFIGURATION FILES ANALYSIS", styles['SectionHeader']))
     story.append(Spacer(1, 0.1*inch))
-    
-    config_analysis = results.get("config_analysis", [])
-    
-    if not config_analysis:
+    config_data = results.get("config_data", {})
+
+    if not config_data:
         story.append(Paragraph("No configuration files analyzed.", styles['Description']))
         return
-    
-    for idx, config in enumerate(config_analysis, 1):
-        file_path = config.get("file_path", "Unknown")
-        config_type = config.get("config_type", "Unknown")
-        
-        story.append(Paragraph(f"6.{idx} {sanitize_text(file_path)}", styles['SubHeader']))
-        story.append(Paragraph(f"Type: <b>{sanitize_text(config_type)}</b>", styles['Metadata']))
+
+    idx = 1
+
+    package_json = config_data.get("package_json")
+    if package_json:
+        story.append(Paragraph(f"6.{idx} package.json", styles['SubHeader']))
+        story.append(Paragraph("Type: <b>Node Package Configuration</b>", styles['Metadata']))
         story.append(Spacer(1, 0.05*inch))
-        
-        # Scripts (for package.json)
-        scripts = config.get("scripts", {})
+
+        scripts = package_json.get("scripts", {})
         if scripts:
             story.append(Paragraph("<b>Scripts:</b>", styles['Normal']))
-            for script_name, script_cmd in list(scripts.items())[:10]:
+            for script_name, script_cmd in list(scripts.items())[:12]:
                 story.append(Paragraph(
                     f"  • {sanitize_text(script_name)}: {sanitize_text(script_cmd)}",
                     styles['CodeBlock']
                 ))
-            if len(scripts) > 10:
-                story.append(Paragraph(f"... and {len(scripts) - 10} more scripts", styles['Metadata']))
-            story.append(Spacer(1, 0.05*inch))
-        
-        # Environment variables
-        env_vars = config.get("environment_variables", [])
-        if env_vars:
-            story.append(Paragraph(f"<b>Environment Variables ({len(env_vars)}):</b>", styles['Normal']))
-            for var in env_vars[:15]:
-                story.append(Paragraph(f"  • {sanitize_text(var)}", styles['CodeBlock']))
-            if len(env_vars) > 15:
-                story.append(Paragraph(f"... and {len(env_vars) - 15} more variables", styles['Metadata']))
-            story.append(Spacer(1, 0.05*inch))
-        
-        # Build settings
-        build_settings = config.get("build_settings", {})
-        if build_settings:
-            story.append(Paragraph("<b>Build Settings:</b>", styles['Normal']))
-            for key, value in list(build_settings.items())[:10]:
-                story.append(Paragraph(
-                    f"  • {sanitize_text(key)}: {sanitize_text(str(value)[:100])}",
-                    styles['CodeBlock']
-                ))
-        
-        story.append(Spacer(1, 0.15*inch))
+            if len(scripts) > 12:
+                story.append(Paragraph(f"... and {len(scripts) - 12} more scripts", styles['Metadata']))
+
+        idx += 1
+        story.append(Spacer(1, 0.12*inch))
+
+    requirements_txt = config_data.get("requirements_txt")
+    if requirements_txt:
+        story.append(Paragraph(f"6.{idx} requirements.txt", styles['SubHeader']))
+        story.append(Paragraph("Type: <b>Python Dependencies</b>", styles['Metadata']))
+        story.append(Spacer(1, 0.05*inch))
+
+        libraries = requirements_txt.get("libraries", [])
+        if libraries:
+            story.append(Paragraph(f"<b>Libraries ({len(libraries)}):</b>", styles['Normal']))
+            for lib in libraries[:25]:
+                story.append(Paragraph(f"  • {sanitize_text(lib)}", styles['CodeBlock']))
+            if len(libraries) > 25:
+                story.append(Paragraph(f"... and {len(libraries) - 25} more libraries", styles['Metadata']))
+
+        idx += 1
+        story.append(Spacer(1, 0.12*inch))
+
+    dockerfile = config_data.get("dockerfile")
+    if dockerfile:
+        story.append(Paragraph(f"6.{idx} Dockerfile", styles['SubHeader']))
+        story.append(Paragraph("Type: <b>Container Build Configuration</b>", styles['Metadata']))
+        story.append(Spacer(1, 0.05*inch))
+
+        base_images = dockerfile.get("base_images", [])
+        if base_images:
+            story.append(Paragraph("<b>Base Images:</b>", styles['Normal']))
+            for image in base_images:
+                story.append(Paragraph(f"  • {sanitize_text(image)}", styles['CodeBlock']))
+
+        exposed_ports = dockerfile.get("exposed_ports", [])
+        if exposed_ports:
+            story.append(Paragraph(f"<b>Exposed Ports:</b> {', '.join(exposed_ports)}", styles['Description']))
+
+        if dockerfile.get("cmd"):
+            story.append(Paragraph(f"<b>CMD:</b> {sanitize_text(dockerfile.get('cmd'))}", styles['Description']))
+
+        idx += 1
+        story.append(Spacer(1, 0.12*inch))
+
+    docker_compose = config_data.get("docker_compose")
+    if docker_compose:
+        story.append(Paragraph(f"6.{idx} docker-compose", styles['SubHeader']))
+        story.append(Paragraph("Type: <b>Container Orchestration</b>", styles['Metadata']))
+        services = docker_compose.get("services", [])
+        if services:
+            story.append(Paragraph(f"<b>Services ({len(services)}):</b>", styles['Normal']))
+            for svc in services[:20]:
+                story.append(Paragraph(f"  • {sanitize_text(svc)}", styles['CodeBlock']))
+        story.append(Spacer(1, 0.12*inch))
+
+
+def add_repository_insights_page(story: List, results: Dict, styles: Dict):
+    """Add repository insights section so export includes dashboard metrics."""
+    story.append(Paragraph("7. REPOSITORY INSIGHTS", styles['SectionHeader']))
+    story.append(Spacer(1, 0.1*inch))
+
+    insights = results.get("insights", {})
+    if not insights:
+        story.append(Paragraph("Repository insights were not available for this analysis run.", styles['Description']))
+        return
+
+    summary_data = [
+        ["Metric", "Value"],
+        ["Stars", str(insights.get("stars", 0))],
+        ["Forks", str(insights.get("forks", 0))],
+        ["Open Issues", str(insights.get("open_issues", 0))],
+        ["Open Pull Requests", str(insights.get("open_pull_requests", 0))],
+        ["Commits (Last 30 Days)", str(insights.get("commit_count_30d", 0))],
+        ["Weekly Commit Frequency", str(insights.get("commit_frequency_weekly", 0.0))],
+    ]
+    t = Table(summary_data, colWidths=[3.5*inch, 1.8*inch])
+    t.setStyle(create_table_style())
+    story.append(t)
+    story.append(Spacer(1, 0.12*inch))
+
+    top_languages = insights.get("top_languages", [])
+    if top_languages:
+        story.append(Paragraph("7.1 Top Languages", styles['SubHeader']))
+        for row in top_languages[:10]:
+            story.append(Paragraph(
+                f"• {sanitize_text(row.get('language', 'Unknown'))}: {row.get('share_pct', 0)}%",
+                styles['ListItem']
+            ))
+        story.append(Spacer(1, 0.08*inch))
+
+    owner_chart = insights.get("owner_repos_chart", [])
+    if owner_chart:
+        story.append(Paragraph("7.2 Stars vs Forks (Top Owner Repos)", styles['SubHeader']))
+        chart_data = [["Repository", "Stars", "Forks"]]
+        for row in owner_chart[:10]:
+            chart_data.append([
+                sanitize_text(row.get("name", "")),
+                str(row.get("stars", 0)),
+                str(row.get("forks", 0)),
+            ])
+        ct = Table(chart_data, colWidths=[2.9*inch, 1.2*inch, 1.2*inch])
+        ct.setStyle(create_table_style())
+        story.append(ct)
+        story.append(Spacer(1, 0.08*inch))
+
+    weekly_activity = insights.get("weekly_commit_activity", [])
+    if weekly_activity:
+        story.append(Paragraph("7.3 Commits Over Time (Recent Weeks)", styles['SubHeader']))
+        for wk in weekly_activity[-12:]:
+            week_date = datetime.fromtimestamp(int(wk.get("week_ts", 0))).strftime("%Y-%m-%d")
+            story.append(Paragraph(
+                f"• Week {sanitize_text(week_date)}: {wk.get('total', 0)} commits",
+                styles['ListItem']
+            ))
+        story.append(Spacer(1, 0.08*inch))
+
+    recent_commits = insights.get("recent_commits", [])
+    if recent_commits:
+        story.append(Paragraph("7.4 Recent Commits", styles['SubHeader']))
+        for commit in recent_commits[:10]:
+            line = (
+                f"• {sanitize_text(commit.get('sha', ''))} — "
+                f"{sanitize_text(commit.get('message', ''))} "
+                f"({sanitize_text(commit.get('author', 'Unknown'))}, {sanitize_text(commit.get('date', ''))})"
+            )
+            story.append(Paragraph(line, styles['ListItem']))
+
+
+def add_ai_outputs_page(story: List, results: Dict, styles: Dict):
+    """Add AI Repo Analysis + AI Review into exported PDF."""
+    story.append(Paragraph("8. AI REPOSITORY ANALYSIS", styles['SectionHeader']))
+    story.append(Spacer(1, 0.1*inch))
+
+    ai_analysis = results.get("ai_analysis")
+    if ai_analysis:
+        story.append(Paragraph("8.1 Structured AI Summary", styles['SubHeader']))
+        story.append(Paragraph(
+            f"<b>Purpose:</b> {sanitize_text(ai_analysis.get('purpose', 'N/A'))}",
+            styles['Description']
+        ))
+        story.append(Paragraph(
+            f"<b>Project Summary:</b> {sanitize_text(ai_analysis.get('project_summary', 'N/A'))}",
+            styles['Description']
+        ))
+
+        quality_data = [
+            ["Field", "Value"],
+            ["Code Quality Score", str(ai_analysis.get("code_quality_score", "N/A"))],
+            ["Complexity", sanitize_text(ai_analysis.get("complexity", "N/A"))],
+            ["Generated By", "AI" if ai_analysis.get("ai_generated") else "Heuristic"],
+        ]
+        qt = Table(quality_data, colWidths=[2.8*inch, 2.5*inch])
+        qt.setStyle(create_table_style())
+        story.append(qt)
+        story.append(Spacer(1, 0.08*inch))
+
+        tech_stack = ai_analysis.get("tech_stack", [])
+        if tech_stack:
+            story.append(Paragraph("<b>Tech Stack Detected:</b>", styles['Normal']))
+            story.append(Paragraph(", ".join([sanitize_text(t) for t in tech_stack[:15]]), styles['Description']))
+
+        improvements = ai_analysis.get("suggested_improvements", [])
+        if improvements:
+            story.append(Paragraph("<b>Suggested Improvements:</b>", styles['Normal']))
+            for tip in improvements[:10]:
+                story.append(Paragraph(f"• {sanitize_text(tip)}", styles['ListItem']))
+    else:
+        story.append(Paragraph("Structured AI repository analysis was not generated in this run.", styles['Description']))
+
+    story.append(Spacer(1, 0.12*inch))
+
+    ai_review = results.get("ai_review")
+    story.append(Paragraph("8.2 AI Architectural Review", styles['SubHeader']))
+    if ai_review and ai_review.get("success"):
+        review_text = sanitize_text(ai_review.get("review", ""))
+        story.append(Paragraph(review_text[:6000], styles['Description']))
+    elif ai_review and ai_review.get("error"):
+        story.append(Paragraph(f"AI review unavailable: {sanitize_text(ai_review.get('error'))}", styles['Description']))
+    else:
+        story.append(Paragraph("AI architectural review was not generated for this run.", styles['Description']))
 
 
 def add_architecture_insights_page(story: List, results: Dict, styles: Dict):
     """Add architecture insights page."""
-    story.append(Paragraph("7. ARCHITECTURE INSIGHTS", styles['SectionHeader']))
+    story.append(Paragraph("9. ARCHITECTURE INSIGHTS", styles['SectionHeader']))
     story.append(Spacer(1, 0.1*inch))
     
     graphs = results.get("graphs", {})
     
     if graphs.get("dependency_graph"):
-        story.append(Paragraph("7.1 Dependency Graph", styles['SubHeader']))
+        story.append(Paragraph("9.1 Dependency Graph", styles['SubHeader']))
         story.append(Paragraph(
             "A dependency graph has been generated showing the relationships between modules and components.",
             styles['Description']
@@ -711,7 +865,7 @@ def add_architecture_insights_page(story: List, results: Dict, styles: Dict):
         story.append(Spacer(1, 0.1*inch))
     
     if graphs.get("call_graph"):
-        story.append(Paragraph("7.2 Call Graph", styles['SubHeader']))
+        story.append(Paragraph("9.2 Call Graph", styles['SubHeader']))
         story.append(Paragraph(
             "A call graph has been generated showing function call relationships.",
             styles['Description']
@@ -719,7 +873,7 @@ def add_architecture_insights_page(story: List, results: Dict, styles: Dict):
         story.append(Spacer(1, 0.1*inch))
     
     # Architecture patterns detected
-    story.append(Paragraph("7.3 Detected Patterns", styles['SubHeader']))
+    story.append(Paragraph("9.3 Detected Patterns", styles['SubHeader']))
     
     meta = results["master_json"]["project_metadata"]
     patterns = []
@@ -742,15 +896,15 @@ def add_architecture_insights_page(story: List, results: Dict, styles: Dict):
 
 def add_appendix_page(story: List, results: Dict, styles: Dict):
     """Add appendix with additional information."""
-    story.append(Paragraph("8. APPENDIX", styles['SectionHeader']))
+    story.append(Paragraph("10. APPENDIX", styles['SectionHeader']))
     story.append(Spacer(1, 0.1*inch))
     
-    story.append(Paragraph("8.1 Report Generation Details", styles['SubHeader']))
+    story.append(Paragraph("10.1 Report Generation Details", styles['SubHeader']))
     story.append(Paragraph(f"Generated: {datetime.now().strftime('%B %d, %Y at %H:%M:%S')}", styles['Normal']))
     story.append(Paragraph("Tool: Repository Intelligence Engine v1.0", styles['Normal']))
     story.append(Spacer(1, 0.1*inch))
     
-    story.append(Paragraph("8.2 Analysis Methodology", styles['SubHeader']))
+    story.append(Paragraph("10.2 Analysis Methodology", styles['SubHeader']))
     methodology = """
     This report was generated through a multi-stage analysis pipeline:
     1. Repository fetching via GitHub API
@@ -764,7 +918,7 @@ def add_appendix_page(story: List, results: Dict, styles: Dict):
     story.append(Paragraph(methodology, styles['Description']))
     story.append(Spacer(1, 0.1*inch))
     
-    story.append(Paragraph("8.3 Disclaimer", styles['SubHeader']))
+    story.append(Paragraph("10.3 Disclaimer", styles['SubHeader']))
     disclaimer = """
     This automated analysis provides insights based on static code analysis and pattern recognition.
     While comprehensive, it may not capture all architectural nuances or context-specific design decisions.
@@ -813,6 +967,8 @@ def generate_comprehensive_pdf_report(results: Dict) -> bytes:
     add_file_structure_page(story, results, styles)
     add_detailed_source_analysis_pages(story, results, styles)
     add_config_analysis_page(story, results, styles)
+    add_repository_insights_page(story, results, styles)
+    add_ai_outputs_page(story, results, styles)
     add_architecture_insights_page(story, results, styles)
     add_appendix_page(story, results, styles)
     

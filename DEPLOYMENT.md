@@ -4,7 +4,9 @@
 
 ### Prerequisites
 - GitHub account
-- GitHub Personal Access Token (classic) with `repo` scope
+- Optional GitHub Personal Access Token for app-level fallback access
+- Optional OpenAI, Gemini, or Hugging Face API key for AI review
+- Optional GitHub OAuth App if users should sign in with GitHub
 
 ### Steps
 
@@ -41,25 +43,56 @@ git push -u origin main
 5. Set main file path: `app.py`
 6. Click "Deploy"
 
-#### 4. Add GitHub Token in Streamlit Cloud
+#### 4. Add Secrets in Streamlit Cloud
 
 1. In your deployed app dashboard, click "Settings" → "Secrets"
-2. Add your GitHub token:
+2. Add the secrets you need.
+
+Minimum example with GitHub fallback token and OpenAI:
 
 ```toml
 GITHUB_TOKEN = "ghp_your_token_here"
+AI_PROVIDER = "openai"
+OPENAI_API_KEY = "sk_your_openai_key"
+OPENAI_MODEL = "gpt-4o-mini"
 ```
 
 3. Save and the app will restart automatically
 
-### Alternative: Deploy with Hugging Face Token (Optional)
+### Alternative AI Providers
 
-If you want to enable AI features later:
+#### Google Gemini
 
 ```toml
-GITHUB_TOKEN = "ghp_your_github_token"
-HF_TOKEN = "hf_your_huggingface_token"
+AI_PROVIDER = "gemini"
+GEMINI_API_KEY = "your_gemini_key"
+GEMINI_MODEL = "gemini-1.5-pro"
 ```
+
+#### Hugging Face
+
+```toml
+AI_PROVIDER = "huggingface"
+HF_API_TOKEN = "hf_your_huggingface_token"
+```
+
+### GitHub OAuth Setup For End Users
+
+If you want users to click "Sign in with GitHub" instead of pasting a PAT, create a GitHub OAuth App and add:
+
+```toml
+GITHUB_OAUTH_CLIENT_ID = "your_client_id"
+GITHUB_OAUTH_CLIENT_SECRET = "your_client_secret"
+GITHUB_OAUTH_REDIRECT_URI = "https://your-app-name.streamlit.app"
+GITHUB_OAUTH_SCOPE = "public_repo"
+```
+
+Important:
+
+- The callback URL in the GitHub OAuth App must exactly match `GITHUB_OAUTH_REDIRECT_URI`.
+- For local development, use `http://localhost:8501`.
+- For deployed apps, use your exact Streamlit app URL.
+- OAuth tokens are stored only for the current Streamlit session.
 
 ## Local Development
 
@@ -71,6 +104,17 @@ pip install -r requirements.txt
 2. Create `.streamlit/secrets.toml`:
 ```toml
 GITHUB_TOKEN = "your_token_here"
+AI_PROVIDER = "openai"
+OPENAI_API_KEY = "your_openai_key_here"
+```
+
+Optional local OAuth config:
+
+```toml
+GITHUB_OAUTH_CLIENT_ID = "your_client_id"
+GITHUB_OAUTH_CLIENT_SECRET = "your_client_secret"
+GITHUB_OAUTH_REDIRECT_URI = "http://localhost:8501"
+GITHUB_OAUTH_SCOPE = "public_repo"
 ```
 
 3. Run the app:
@@ -82,14 +126,24 @@ streamlit run app.py
 
 The app supports these configurations:
 
-- `GITHUB_TOKEN` - **Required**: GitHub Personal Access Token
-- `HF_TOKEN` - *Optional*: Hugging Face API token (for AI features, currently disabled)
+- `GITHUB_TOKEN` - Optional app-level GitHub PAT fallback
+- `AI_PROVIDER` - Optional explicit provider: `openai`, `gemini`, or `huggingface`
+- `OPENAI_API_KEY` - Optional OpenAI key
+- `OPENAI_MODEL` - Optional OpenAI model override
+- `GEMINI_API_KEY` - Optional Google Gemini key
+- `GEMINI_MODEL` - Optional Gemini model override
+- `HF_API_TOKEN` - Optional Hugging Face token
+- `GITHUB_OAUTH_CLIENT_ID` - Optional GitHub OAuth client id
+- `GITHUB_OAUTH_CLIENT_SECRET` - Optional GitHub OAuth client secret
+- `GITHUB_OAUTH_REDIRECT_URI` - Optional GitHub OAuth redirect URI
+- `GITHUB_OAUTH_SCOPE` - Optional GitHub OAuth scope, defaults to `public_repo`
 
 ## Troubleshooting
 
 ### GitHub API Rate Limits
 - Without authentication: 60 requests/hour
 - With authentication: 5,000 requests/hour
+- Best end-user experience: GitHub OAuth or session-only user PAT
 
 ### Streamlit Cloud Issues
 - Check deployment logs in Streamlit Cloud dashboard
@@ -97,6 +151,11 @@ The app supports these configurations:
 - Ensure requirements.txt is up to date
 
 ### AI Features Not Working
-- AI features are currently disabled due to Hugging Face infrastructure changes
-- The app works perfectly with static semantic analysis
-- Future updates may add Google Gemini or OpenAI integration
+- Verify the correct provider key is configured
+- Verify `AI_PROVIDER` matches the available secret, or leave it unset for auto-detection
+- The app falls back to static semantic analysis when no AI provider is available
+
+### OAuth Issues
+- Confirm the OAuth callback URL matches exactly
+- Confirm `GITHUB_OAUTH_CLIENT_ID`, `GITHUB_OAUTH_CLIENT_SECRET`, and `GITHUB_OAUTH_REDIRECT_URI` are set
+- Confirm the signed-in GitHub user has access to the repository being analyzed

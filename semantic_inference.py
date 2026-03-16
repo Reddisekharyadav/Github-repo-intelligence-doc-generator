@@ -112,11 +112,19 @@ def generate_description(file_analysis: dict) -> str:
     return " ".join(descriptions)
 
 
-def enhance_function_descriptions(functions: List[Dict], file_path: str, language: str, file_content: str = "") -> List[Dict]:
+def enhance_function_descriptions(
+    functions: List[Dict],
+    file_path: str,
+    language: str,
+    file_content: str = "",
+    max_model_calls: int | None = None,
+) -> List[Dict]:
     """
     Enhance function objects with semantic descriptions using local inference or heuristics.
     Uses Flan-T5 model when available, falls back to pattern matching.
     """
+    del file_path, file_content, max_model_calls
+
     if not functions:
         return functions
     

@@ -4,3 +4,5 @@ graphviz
 reportlab
 toml
 huggingface_hub
+plotly
+altair
