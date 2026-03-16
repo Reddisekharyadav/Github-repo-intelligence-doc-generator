@@ -1963,55 +1963,20 @@ def render_sidebar():
         )
         st.caption("Start with a repository URL. The app explains the structure in plain English before showing technical detail.")
 
-        st.divider()
-        st.markdown("### 🔐 API Tokens")
-
-        st.markdown("**GitHub Sign In (recommended)**")
+        # Sign-in only shown when user has authenticated via OAuth for private repos
         oauth_user = st.session_state.get("github_oauth_user")
         oauth_token = st.session_state.get("github_oauth_token")
-
         if oauth_token:
+            st.divider()
             username = (oauth_user or {}).get("login", "GitHub user")
-            st.success(f"Signed in as @{username}")
-
+            st.success(f"🔑 Signed in as @{username}")
             if st.button("Sign out GitHub", key="github_oauth_signout", use_container_width=True):
                 revoke_ok, revoke_msg = _revoke_github_oauth_token(oauth_token)
                 st.session_state.pop("github_oauth_token", None)
                 st.session_state.pop("github_oauth_user", None)
                 st.session_state.pop("github_oauth_last_code", None)
                 st.session_state.pop("github_oauth_state", None)
-                if revoke_ok:
-                    st.info("Signed out and revoked GitHub session token.")
-                else:
-                    st.info(f"Signed out locally. {revoke_msg}")
                 st.rerun()
-        else:
-            authorize_url = _build_github_oauth_authorize_url()
-            if authorize_url:
-                st.link_button("Sign in with GitHub", authorize_url, use_container_width=True)
-                st.caption("OAuth token is used for this app session only.")
-            else:
-                # OAuth not configured — show manual token input instead
-                st.text_input(
-                    "GitHub Personal Access Token",
-                    type="password",
-                    key="github_token_input",
-                    placeholder="ghp_xxxxxxxxxxxxxxxxxxxx",
-                    on_change=_sync_github_token_from_input,
-                    help="Create a token at github.com/settings/tokens with repo scope.",
-                )
-                manual_token = st.session_state.get("github_token_input", "").strip()
-                if manual_token:
-                    ok, msg = _check_github_token(manual_token)
-                    if ok:
-                        st.success("Token valid ✓")
-                    else:
-                        st.warning(msg)
-
-        active_github_token = _get_runtime_github_token()
-        st.caption(
-            f"GitHub API auth: {'enabled' if active_github_token else 'not configured'}"
-        )
 
         st.divider()
         st.markdown("### 👨‍💻 Developer")
