@@ -6,7 +6,10 @@ Advanced repository intelligence analysis and AI architectural review.
 import json
 import os
 import secrets
+import hashlib
+import hmac
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from typing import Optional
 from urllib.parse import urlencode
 
@@ -247,10 +250,24 @@ st.markdown("""
         padding: 0.75rem 0.9rem;
         margin-top: 0.5rem;
     }
+    .developer-profile {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        margin-bottom: 0.5rem;
+    }
+    .developer-avatar {
+        width: 56px;
+        height: 56px;
+        border-radius: 50%;
+        object-fit: cover;
+        border: 2px solid rgba(97, 218, 251, 0.55);
+        box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
+    }
     .developer-name {
         font-weight: 700;
         color: #cfe3ff;
-        margin: 0 0 0.25rem 0;
+        margin: 0;
     }
     .developer-link a {
         color: #61dafb !important;
@@ -259,6 +276,24 @@ st.markdown("""
     }
     .developer-link a:hover {
         text-decoration: underline;
+    }
+    .feedback-panel {
+        margin-top: 1.25rem;
+        padding: 1rem;
+        border-radius: 14px;
+        border: 1px solid rgba(132, 198, 255, 0.28);
+        background: linear-gradient(180deg, rgba(13, 28, 47, 0.85), rgba(9, 17, 29, 0.92));
+    }
+    .feedback-title {
+        font-size: 1rem;
+        font-weight: 700;
+        color: #eaf7ff;
+        margin: 0 0 0.25rem 0;
+    }
+    .feedback-subtitle {
+        color: #9eb5cb;
+        font-size: 0.92rem;
+        margin: 0;
     }
     @media (max-width: 900px) {
         .hero-grid,
@@ -280,10 +315,27 @@ def _get_secret(key: str) -> Optional[str]:
     try:
         value = st.secrets.get(key)
         if value:
-            return value
+            return str(value).strip()
     except Exception:
         pass
-    return os.environ.get(key)
+    env_value = os.environ.get(key)
+    return env_value.strip() if isinstance(env_value, str) else env_value
+
+
+def _is_placeholder_oauth_value(value: Optional[str]) -> bool:
+    """Detect template placeholder values in OAuth configuration."""
+    if not value:
+        return True
+
+    normalized = value.strip().lower()
+    placeholder_markers = (
+        "your_",
+        "replace_",
+        "changeme",
+        "example",
+        "placeholder",
+    )
+    return any(marker in normalized for marker in placeholder_markers)
 
 
 def _get_github_token() -> Optional[str]:
@@ -308,6 +360,40 @@ def _get_github_oauth_redirect_uri() -> Optional[str]:
 
 def _get_github_oauth_scope() -> str:
     return _get_secret("GITHUB_OAUTH_SCOPE") or "public_repo"
+
+
+def _feedback_file_path() -> Path:
+    """Return path for storing user feedback entries."""
+    return Path(__file__).resolve().parent / "user_feedback.json"
+
+
+def _load_feedback_entries() -> list[dict]:
+    """Load existing feedback entries from disk."""
+    file_path = _feedback_file_path()
+    if not file_path.exists():
+        return []
+
+    try:
+        data = json.loads(file_path.read_text(encoding="utf-8"))
+        if isinstance(data, list):
+            return data
+    except (OSError, ValueError):
+        return []
+
+    return []
+
+
+def _append_feedback_entry(entry: dict) -> bool:
+    """Append a feedback entry to local storage."""
+    file_path = _feedback_file_path()
+    entries = _load_feedback_entries()
+    entries.append(entry)
+
+    try:
+        file_path.write_text(json.dumps(entries, indent=2), encoding="utf-8")
+        return True
+    except OSError:
+        return False
 
 
 def _get_user_github_token() -> Optional[str]:
@@ -662,12 +748,13 @@ def _build_github_oauth_authorize_url() -> Optional[str]:
     """Build GitHub OAuth authorize URL for Sign in button."""
     client_id = _get_github_oauth_client_id()
     redirect_uri = _get_github_oauth_redirect_uri()
+    client_secret = _get_github_oauth_client_secret()
     if not client_id or not redirect_uri:
         return None
 
     state = st.session_state.get("github_oauth_state")
     if not state:
-        state = secrets.token_urlsafe(24)
+        state = _generate_oauth_state(client_secret)
         st.session_state["github_oauth_state"] = state
 
     # Cache state server-side for callback validation in case Streamlit session is recreated.
@@ -700,6 +787,65 @@ def _fetch_github_user(access_token: str) -> Optional[dict]:
     return None
 
 
+def _generate_oauth_state(client_secret: Optional[str]) -> str:
+    """Generate CSRF state with signed fallback format for callback validation."""
+    nonce = secrets.token_urlsafe(24)
+    issued_at = int(datetime.now(timezone.utc).timestamp())
+
+    # When client secret exists, include HMAC signature so state can be validated
+    # even if Streamlit session state is reset after OAuth redirect.
+    if client_secret:
+        payload = f"{nonce}.{issued_at}"
+        signature = hmac.new(
+            client_secret.encode("utf-8"),
+            payload.encode("utf-8"),
+            hashlib.sha256,
+        ).hexdigest()
+        return f"{payload}.{signature}"
+
+    return nonce
+
+
+def _validate_oauth_state(received_state: str, expected_state: Optional[str], client_secret: Optional[str]) -> bool:
+    """Validate OAuth state against session value or signed fallback token."""
+    if not received_state:
+        return False
+
+    # Primary check: exact match with session state if available.
+    if expected_state and hmac.compare_digest(received_state, expected_state):
+        return True
+
+    # Fallback check for cases where Streamlit session is recreated after redirect.
+    # Accept only signed states generated by this app and not older than 15 minutes.
+    if not client_secret:
+        return False
+
+    parts = received_state.split(".")
+    if len(parts) != 3:
+        return False
+
+    nonce, issued_at_raw, signature = parts
+    if not nonce or not issued_at_raw or not signature:
+        return False
+
+    try:
+        issued_at = int(issued_at_raw)
+    except ValueError:
+        return False
+
+    now_ts = int(datetime.now(timezone.utc).timestamp())
+    if now_ts - issued_at > 900 or issued_at > now_ts + 60:
+        return False
+
+    payload = f"{nonce}.{issued_at_raw}"
+    expected_signature = hmac.new(
+        client_secret.encode("utf-8"),
+        payload.encode("utf-8"),
+        hashlib.sha256,
+    ).hexdigest()
+    return hmac.compare_digest(signature, expected_signature)
+
+
 def _exchange_github_oauth_code_for_token(code: str, state: str) -> tuple[bool, str]:
     """Exchange OAuth callback code for access token and save session state."""
     client_id = _get_github_oauth_client_id()
@@ -708,6 +854,12 @@ def _exchange_github_oauth_code_for_token(code: str, state: str) -> tuple[bool, 
 
     if not client_id or not client_secret or not redirect_uri:
         return False, "GitHub OAuth is not configured. Set client id, secret, and redirect URI."
+
+    if _is_placeholder_oauth_value(client_id) or _is_placeholder_oauth_value(client_secret):
+        return (
+            False,
+            "GitHub OAuth is not configured correctly. Replace placeholder values for GITHUB_OAUTH_CLIENT_ID and GITHUB_OAUTH_CLIENT_SECRET in .streamlit/secrets.toml.",
+        )
 
     expected_state = st.session_state.get("github_oauth_state")
     now = datetime.now(timezone.utc)
@@ -719,8 +871,9 @@ def _exchange_github_oauth_code_for_token(code: str, state: str) -> tuple[bool, 
 
     state_valid_in_cache = bool(state) and state in _OAUTH_STATE_CACHE and _OAUTH_STATE_CACHE[state] > now
     state_valid_in_session = bool(expected_state) and state == expected_state
+    state_valid_signed_fallback = _validate_oauth_state(state, expected_state, client_secret)
 
-    if not (state_valid_in_session or state_valid_in_cache):
+    if not (state_valid_in_session or state_valid_in_cache or state_valid_signed_fallback):
         return False, "GitHub OAuth state validation failed. Please try signing in again."
 
     # Consume one-time state after successful validation.
@@ -805,6 +958,54 @@ def _handle_github_oauth_callback() -> Optional[tuple[str, str]]:
     ok, message = _exchange_github_oauth_code_for_token(code, state or "")
     _clear_query_params()
     return ("success", message) if ok else ("error", message)
+
+
+def _attempt_browser_redirect(url: str) -> None:
+    """Best-effort browser redirect for OAuth flows inside Streamlit."""
+    try:
+        import streamlit.components.v1 as components
+
+        encoded_url = json.dumps(url)
+        components.html(
+            f"""
+            <script>
+                window.top.location.href = {encoded_url};
+            </script>
+            """,
+            height=0,
+        )
+    except Exception:
+        # Keep a visible link as fallback when script-based redirect is blocked.
+        pass
+
+
+def _render_private_repo_access_help(repo_url: str, authorize_url: Optional[str]) -> None:
+    """Show clear guidance about private repository access requirements."""
+    owner_text = ""
+    try:
+        owner, _ = parse_github_url(repo_url)
+        owner_text = owner
+    except Exception:
+        owner_text = "this repository"
+
+    st.info(
+        "Private repositories can only be opened by GitHub users who already have permission."
+    )
+    st.markdown(
+        "Access is allowed for users with explicit access such as the owner, collaborators, or approved organization/team members."
+    )
+
+    if authorize_url:
+        st.link_button("Sign in with GitHub", authorize_url, use_container_width=True)
+        st.caption(
+            "If the signed-in account does not have access to this private repository, analysis will still be denied."
+        )
+    else:
+        st.warning(
+            "GitHub OAuth sign-in is not configured for this app. Configure OAuth secrets or provide a personal token with repository access."
+        )
+        if owner_text:
+            st.caption(f"Required: a GitHub account that already has access to {owner_text} private repositories.")
 
 
 # ──────────────────────────────────────────────
@@ -1257,7 +1458,10 @@ def render_repository_insights(results: dict):
                     [1.0, "#34d399"],
                 ],
                 hovertemplate="Week %{y}<br>%{x}: %{z} commits<extra></extra>",
-                colorbar=dict(title="Commits", titlefont=dict(color="#64748b"), tickfont=dict(color="#94a3b8")),
+                colorbar=dict(
+                    title=dict(text="Commits", font=dict(color="#64748b")),
+                    tickfont=dict(color="#94a3b8"),
+                ),
             )
         )
         fig_heatmap.update_layout(
@@ -2019,27 +2223,29 @@ def render_sidebar():
 
         st.divider()
         st.markdown("### 👨‍💻 Developer")
-        st.markdown(
-            """
-            <div class="developer-card">
-                <p class="developer-name">Reddisekharyadav</p>
-                <p class="developer-link">
-                    <a href="https://github.com/Reddisekharyadav" target="_blank">
-                        🔗 github.com/Reddisekharyadav
-                    </a>
-                </p>
-            </div>
-            <div class="developer-card">
-                <p class="developer-name">kuruvamunirangadu</p>
-                <p class="developer-link">
-                    <a href="https://github.com/kuruvamunirangadu" target="_blank">
-                        🔗 github.com/kuruvamunirangadu
-                    </a>
-                </p>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
+        developers = [
+            {
+                "name": "Reddisekharyadav",
+                "url": "https://github.com/Reddisekharyadav",
+                "avatar": "https://github.com/Reddisekharyadav.png",
+            },
+            {
+                "name": "kuruvamunirangadu",
+                "url": "https://github.com/kuruvamunirangadu",
+                "avatar": "https://github.com/kuruvamunirangadu.png",
+            },
+        ]
+
+        for developer in developers:
+            st.markdown('<div class="developer-card">', unsafe_allow_html=True)
+            st.image(developer["avatar"], width=92)
+            st.markdown(f'<p class="developer-name">{developer["name"]}</p>', unsafe_allow_html=True)
+            st.link_button(
+                f'🔗 {developer["url"].replace("https://", "")}',
+                developer["url"],
+                use_container_width=True,
+            )
+            st.markdown('</div>', unsafe_allow_html=True)
 
         st.divider()
         st.caption("Built with Streamlit · Graphviz · AI Providers")
@@ -2070,6 +2276,80 @@ def render_private_repo_signin_prompt():
         st.warning(message)
         if authorize_url:
             st.link_button("Continue with GitHub Sign-In", authorize_url)
+
+
+def render_feedback_section():
+    """Render end-user feedback form at the bottom of the page."""
+    st.markdown("---")
+    st.markdown(
+        """
+        <div class="feedback-panel">
+            <p class="feedback-title">Share Your Feedback</p>
+            <p class="feedback-subtitle">Tell us what worked well and what should improve.</p>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    with st.form("user_feedback_form", clear_on_submit=True):
+        rating = st.slider("Overall experience", min_value=1, max_value=5, value=4)
+        feedback_text = st.text_area(
+            "Your feedback",
+            placeholder="Example: The dashboard is great. It would help to add a compare-branches view.",
+            max_chars=1000,
+        )
+        contact = st.text_input("Email or GitHub (optional)", placeholder="you@example.com or github.com/yourname")
+        submitted = st.form_submit_button("Submit Feedback", use_container_width=True)
+
+    if submitted:
+        clean_feedback = feedback_text.strip()
+        if not clean_feedback:
+            st.warning("Please add a short feedback message before submitting.")
+            return
+
+        payload = {
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "rating": rating,
+            "feedback": clean_feedback,
+            "contact": contact.strip(),
+        }
+        if _append_feedback_entry(payload):
+            st.success("Thanks for the feedback. Your response has been saved.")
+        else:
+            st.error("Unable to save feedback right now. Please try again.")
+
+    recent_feedback = _load_feedback_entries()
+    if recent_feedback:
+        st.markdown("#### Recent Feedback")
+        for item in reversed(recent_feedback[-5:]):
+            rating_value = int(item.get("rating", 0) or 0)
+            rating_value = max(0, min(5, rating_value))
+            stars = "★" * rating_value + "☆" * (5 - rating_value)
+
+            created_at = item.get("created_at", "")
+            try:
+                created_display = datetime.fromisoformat(created_at.replace("Z", "+00:00")).strftime("%Y-%m-%d %H:%M UTC")
+            except (TypeError, ValueError):
+                created_display = "Unknown time"
+
+            feedback_body = str(item.get("feedback", "")).strip()
+            if len(feedback_body) > 220:
+                feedback_body = f"{feedback_body[:220].rstrip()}..."
+
+            contact_text = str(item.get("contact", "")).strip()
+            contact_line = f" • by {contact_text}" if contact_text else ""
+
+            st.markdown(
+                f"""
+                <div style="padding:0.75rem 0.85rem;margin:0.45rem 0;border:1px solid rgba(128,191,255,0.2);
+                    border-radius:10px;background:rgba(255,255,255,0.02);">
+                    <div style="font-weight:700;color:#d9eeff;font-size:0.92rem;">{stars}</div>
+                    <div style="color:#afc4d8;font-size:0.82rem;margin:0.2rem 0 0.45rem 0;">{created_display}{contact_line}</div>
+                    <div style="color:#e8f4ff;font-size:0.92rem;line-height:1.4;">{feedback_body}</div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
 
 
 # ──────────────────────────────────────────────
@@ -2236,6 +2516,8 @@ def main():
         with tab7:
             render_pdf_export(results)
             render_raw_json(results)
+
+    render_feedback_section()
 
 
 if __name__ == "__main__":

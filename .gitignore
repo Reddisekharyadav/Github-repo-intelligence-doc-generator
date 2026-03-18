@@ -34,3 +34,6 @@ check_*.py
 
 # PDF outputs
 *.pdf
+
+# Runtime data
+user_feedback.json
