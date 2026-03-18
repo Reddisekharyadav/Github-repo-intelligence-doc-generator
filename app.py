@@ -1973,20 +1973,30 @@ def render_sidebar():
         )
         st.caption("Start with a repository URL. The app explains the structure in plain English before showing technical detail.")
 
-        # Sign-in only shown when user has authenticated via OAuth for private repos
+        # Optional GitHub sign-in controls (public repos can still run without sign-in)
+        st.divider()
+        st.markdown("### 🔐 GitHub Access")
+        st.caption("Optional for public repositories. Required for private repositories.")
+
+        authorize_url = _build_github_oauth_authorize_url()
         oauth_user = st.session_state.get("github_oauth_user")
         oauth_token = st.session_state.get("github_oauth_token")
         if oauth_token:
-            st.divider()
             username = (oauth_user or {}).get("login", "GitHub user")
             st.success(f"🔑 Signed in as @{username}")
             if st.button("Sign out GitHub", key="github_oauth_signout", use_container_width=True):
-                revoke_ok, revoke_msg = _revoke_github_oauth_token(oauth_token)
+                _revoke_github_oauth_token(oauth_token)
                 st.session_state.pop("github_oauth_token", None)
                 st.session_state.pop("github_oauth_user", None)
                 st.session_state.pop("github_oauth_last_code", None)
                 st.session_state.pop("github_oauth_state", None)
                 st.rerun()
+        else:
+            st.info("Not signed in. Public repositories will still work.")
+            if authorize_url:
+                st.link_button("Sign in with GitHub", authorize_url, use_container_width=True)
+            else:
+                st.caption("GitHub OAuth is not configured in secrets.")
 
         st.divider()
         st.markdown("### 👨‍💻 Developer")
@@ -2014,6 +2024,33 @@ def render_sidebar():
 
         st.divider()
         st.caption("Built with Streamlit · Graphviz · AI Providers")
+
+
+def render_private_repo_signin_prompt():
+    """Render a small sign-in prompt for private repository access."""
+    prompt = st.session_state.get("private_repo_signin_prompt")
+    if not prompt:
+        return
+
+    authorize_url = prompt.get("authorize_url")
+    message = prompt.get("message") or "Private repository detected. Sign in with GitHub to continue analysis."
+
+    if hasattr(st, "dialog"):
+        @st.dialog("GitHub Sign-In Required")
+        def _private_repo_dialog():
+            st.write(message)
+            st.caption("Public repositories do not require sign-in.")
+            if authorize_url:
+                st.link_button("Continue with GitHub Sign-In", authorize_url, use_container_width=True)
+            if st.button("Close", use_container_width=True):
+                st.session_state.pop("private_repo_signin_prompt", None)
+                st.rerun()
+
+        _private_repo_dialog()
+    else:
+        st.warning(message)
+        if authorize_url:
+            st.link_button("Continue with GitHub Sign-In", authorize_url)
 
 
 # ──────────────────────────────────────────────
@@ -2050,6 +2087,7 @@ def main():
     
     render_header()
     render_sidebar()
+    render_private_repo_signin_prompt()
     if "analysis_results" not in st.session_state:
         render_first_run_dashboard()
 
@@ -2082,14 +2120,12 @@ def main():
             results = run_analysis(repo_url)
             st.session_state["analysis_results"] = results
         except GitHubSignInRequired as e:
-            st.warning(str(e))
             st.session_state["pending_repo_url"] = repo_url
-            st.markdown(
-                f'<meta http-equiv="refresh" content="0; url={e.authorize_url}">',
-                unsafe_allow_html=True,
-            )
-            st.link_button("Continue to GitHub Sign In", e.authorize_url)
-            return
+            st.session_state["private_repo_signin_prompt"] = {
+                "message": str(e),
+                "authorize_url": e.authorize_url,
+            }
+            st.rerun()
         except ValueError as e:
             error_text = str(e)
             st.error(f"❌ {error_text}")
