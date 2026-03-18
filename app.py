@@ -54,6 +54,8 @@ except ImportError:
         }
 
 GITHUB_API_BASE = "https://api.github.com"
+OAUTH_STATE_TTL_MINUTES = 15
+_OAUTH_STATE_CACHE: dict[str, datetime] = {}
 
 
 class GitHubSignInRequired(RuntimeError):
@@ -668,6 +670,9 @@ def _build_github_oauth_authorize_url() -> Optional[str]:
         state = secrets.token_urlsafe(24)
         st.session_state["github_oauth_state"] = state
 
+    # Cache state server-side for callback validation in case Streamlit session is recreated.
+    _OAUTH_STATE_CACHE[state] = datetime.now(timezone.utc) + timedelta(minutes=OAUTH_STATE_TTL_MINUTES)
+
     params = {
         "client_id": client_id,
         "redirect_uri": redirect_uri,
@@ -705,8 +710,22 @@ def _exchange_github_oauth_code_for_token(code: str, state: str) -> tuple[bool, 
         return False, "GitHub OAuth is not configured. Set client id, secret, and redirect URI."
 
     expected_state = st.session_state.get("github_oauth_state")
-    if not expected_state or state != expected_state:
+    now = datetime.now(timezone.utc)
+
+    # Remove expired entries from cache.
+    for cached_state, expiry in list(_OAUTH_STATE_CACHE.items()):
+        if expiry <= now:
+            _OAUTH_STATE_CACHE.pop(cached_state, None)
+
+    state_valid_in_cache = bool(state) and state in _OAUTH_STATE_CACHE and _OAUTH_STATE_CACHE[state] > now
+    state_valid_in_session = bool(expected_state) and state == expected_state
+
+    if not (state_valid_in_session or state_valid_in_cache):
         return False, "GitHub OAuth state validation failed. Please try signing in again."
+
+    # Consume one-time state after successful validation.
+    if state:
+        _OAUTH_STATE_CACHE.pop(state, None)
 
     try:
         response = requests.post(
@@ -2039,7 +2058,7 @@ def render_private_repo_signin_prompt():
         @st.dialog("GitHub Sign-In Required")
         def _private_repo_dialog():
             st.write(message)
-            st.caption("Public repositories do not require sign-in.")
+            st.caption("Public repositories do not require sign-in. GitHub OAuth opens github.com for secure consent, then returns here and resumes analysis.")
             if authorize_url:
                 st.link_button("Continue with GitHub Sign-In", authorize_url, use_container_width=True)
             if st.button("Close", use_container_width=True):
@@ -2097,7 +2116,23 @@ def main():
         "🔗 GitHub Repository URL",
         placeholder="https://github.com/owner/repo",
         help="Enter a public GitHub repository URL to analyze.",
+        key="repo_url_input",
     )
+
+    # If OAuth succeeded and a private repo was pending, resume automatically.
+    if oauth_notice and oauth_notice[0] == "success":
+        pending_repo_url = st.session_state.get("pending_repo_url")
+        if pending_repo_url and "analysis_results" not in st.session_state:
+            with st.spinner("Resuming private repository analysis after sign-in..."):
+                try:
+                    results = run_analysis(pending_repo_url)
+                    st.session_state["analysis_results"] = results
+                    st.session_state["repo_url_input"] = pending_repo_url
+                    st.session_state.pop("pending_repo_url", None)
+                    st.session_state.pop("private_repo_signin_prompt", None)
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Could not resume analysis automatically: {e}")
 
     col1, col2, col3 = st.columns([1, 1, 4])
     analyze_btn = col1.button("🚀 Analyze", type="primary", use_container_width=True)
