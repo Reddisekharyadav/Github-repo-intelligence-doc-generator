@@ -571,6 +571,16 @@ def _select_github_token_for_repo(repo_url: str) -> tuple[Optional[str], str]:
     app_token = _get_github_token()
 
     public_status, public_meta = _fetch_repo_metadata(owner, repo, token=None)
+
+    # GitHub returns 404 for private repositories when unauthenticated.
+    # If OAuth is available and there is no user token yet, prompt sign-in first.
+    if public_status == 404 and not user_token:
+        authorize_url = _build_github_oauth_authorize_url()
+        if authorize_url:
+            raise GitHubSignInRequired(
+                "Repository is not publicly accessible. If it is private, continue with GitHub sign in.",
+                authorize_url,
+            )
     if public_status == 200 and public_meta:
         if public_meta.get("private"):
             if user_token:
@@ -2081,7 +2091,16 @@ def main():
             st.link_button("Continue to GitHub Sign In", e.authorize_url)
             return
         except ValueError as e:
-            st.error(f"❌ {str(e)}")
+            error_text = str(e)
+            st.error(f"❌ {error_text}")
+            if (
+                "Repository not found or access denied" in error_text
+                and not _get_user_github_token()
+            ):
+                authorize_url = _build_github_oauth_authorize_url()
+                if authorize_url:
+                    st.info("If this repository is private, sign in with GitHub and retry the analysis.")
+                    st.link_button("Sign in with GitHub", authorize_url)
             return
         except RuntimeError as e:
             st.error(f"❌ {str(e)}")
