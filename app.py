@@ -244,38 +244,63 @@ st.markdown("""
         border-radius: 8px;
     }
     .developer-card {
-        background: linear-gradient(135deg, rgba(78, 140, 255, 0.15), rgba(97, 218, 251, 0.12));
-        border: 1px solid rgba(78, 140, 255, 0.45);
-        border-radius: 10px;
-        padding: 0.75rem 0.9rem;
-        margin-top: 0.5rem;
+        border-radius: 12px;
+        padding: 0.55rem;
+        margin-top: 0.6rem;
+        animation: developerEnter 0.5s ease-out;
+        transition: transform 0.2s ease, box-shadow 0.2s ease;
     }
-    .developer-profile {
-        display: flex;
-        align-items: center;
-        gap: 0.75rem;
-        margin-bottom: 0.5rem;
+    .developer-card:hover {
+        transform: translateY(-3px);
+        box-shadow: 0 10px 20px rgba(0, 0, 0, 0.2);
     }
-    .developer-avatar {
-        width: 56px;
-        height: 56px;
-        border-radius: 50%;
-        object-fit: cover;
-        border: 2px solid rgba(97, 218, 251, 0.55);
-        box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
+    .developer-image-shell {
+        border-radius: 14px;
+        overflow: hidden;
+        padding: 3px;
+        background: linear-gradient(135deg, rgba(139, 232, 255, 0.35), rgba(103, 178, 255, 0.18));
+        animation: imagePop 0.55s ease-out;
+    }
+    .developer-image-shell img {
+        border-radius: 11px;
+        animation: imageReveal 0.7s ease-out;
     }
     .developer-name {
         font-weight: 700;
         color: #cfe3ff;
-        margin: 0;
+        margin: 0.45rem 0 0.35rem 0;
+        text-align: center;
+        letter-spacing: 0.01em;
     }
-    .developer-link a {
-        color: #61dafb !important;
-        font-weight: 600;
-        text-decoration: none;
+    @keyframes developerEnter {
+        from {
+            opacity: 0;
+            transform: translateY(10px);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
     }
-    .developer-link a:hover {
-        text-decoration: underline;
+    @keyframes imagePop {
+        from {
+            opacity: 0;
+            transform: scale(0.92);
+        }
+        to {
+            opacity: 1;
+            transform: scale(1);
+        }
+    }
+    @keyframes imageReveal {
+        from {
+            opacity: 0;
+            filter: blur(6px);
+        }
+        to {
+            opacity: 1;
+            filter: blur(0);
+        }
     }
     .feedback-panel {
         margin-top: 1.25rem;
@@ -2227,25 +2252,47 @@ def render_sidebar():
             {
                 "name": "Reddisekharyadav",
                 "url": "https://github.com/Reddisekharyadav",
-                "avatar": "https://github.com/Reddisekharyadav.png",
+                "images": [
+                    # "assets/images/reddisekharyadav1.jpg",
+                    "assets/images/reddisekharyadav.jpg"
+                ],
             },
             {
                 "name": "kuruvamunirangadu",
                 "url": "https://github.com/kuruvamunirangadu",
-                "avatar": "https://github.com/kuruvamunirangadu.png",
+                "images": ["assets/images/kuruvamunirangadu.png"],
             },
         ]
 
-        for developer in developers:
-            st.markdown('<div class="developer-card">', unsafe_allow_html=True)
-            st.image(developer["avatar"], width=92)
-            st.markdown(f'<p class="developer-name">{developer["name"]}</p>', unsafe_allow_html=True)
-            st.link_button(
-                f'🔗 {developer["url"].replace("https://", "")}',
-                developer["url"],
-                use_container_width=True,
-            )
-            st.markdown('</div>', unsafe_allow_html=True)
+        dev_cols = st.columns(2, gap="small")
+        for idx, developer in enumerate(developers):
+            with dev_cols[idx]:
+                st.markdown('<div class="developer-card">', unsafe_allow_html=True)
+
+                selected_image = None
+                for rel_path in developer.get("images", []):
+                    abs_path = Path(__file__).resolve().parent / rel_path
+                    if abs_path.exists():
+                        selected_image = str(abs_path)
+                        break
+
+                if selected_image:
+                    st.markdown('<div class="developer-image-shell">', unsafe_allow_html=True)
+                    st.image(selected_image, use_container_width=True)
+                    st.markdown('</div>', unsafe_allow_html=True)
+                else:
+                    st.info("Image not found")
+
+                st.markdown(
+                    f'<p class="developer-name">{developer["name"]}</p>',
+                    unsafe_allow_html=True,
+                )
+                st.link_button(
+                    f'🔗 View GitHub',
+                    developer["url"],
+                    use_container_width=True,
+                )
+                st.markdown('</div>', unsafe_allow_html=True)
 
         st.divider()
         st.caption("Built with Streamlit · Graphviz · AI Providers")
