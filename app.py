@@ -8,6 +8,7 @@ import os
 import secrets
 import hashlib
 import hmac
+import html
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional
@@ -319,6 +320,41 @@ st.markdown("""
         color: #9eb5cb;
         font-size: 0.92rem;
         margin: 0;
+    }
+    .review-scroll-shell {
+        max-height: 380px;
+        overflow-y: auto;
+        padding-right: 0.25rem;
+    }
+    .review-scroll-shell::-webkit-scrollbar {
+        width: 8px;
+    }
+    .review-scroll-shell::-webkit-scrollbar-thumb {
+        background: rgba(110, 175, 255, 0.45);
+        border-radius: 999px;
+    }
+    .review-item {
+        padding: 0.65rem 0.75rem;
+        margin-bottom: 0.5rem;
+        border-radius: 10px;
+        border: 1px solid rgba(128,191,255,0.2);
+        background: rgba(255,255,255,0.03);
+    }
+    .review-item-head {
+        color: #d9eeff;
+        font-size: 0.85rem;
+        font-weight: 700;
+        margin-bottom: 0.25rem;
+    }
+    .review-item-meta {
+        color: #afc4d8;
+        font-size: 0.76rem;
+        margin-bottom: 0.35rem;
+    }
+    .review-item-body {
+        color: #e8f4ff;
+        font-size: 0.86rem;
+        line-height: 1.35;
     }
     @media (max-width: 900px) {
         .hero-grid,
@@ -2295,6 +2331,41 @@ def render_sidebar():
                 st.markdown('</div>', unsafe_allow_html=True)
 
         st.divider()
+        st.markdown("### 🗣️ All Reviews")
+        review_entries = list(reversed(_load_feedback_entries()))
+        if review_entries:
+            review_html_parts = ['<div class="review-scroll-shell">']
+            for idx, item in enumerate(review_entries, start=1):
+                rating_value = int(item.get("rating", 0) or 0)
+                rating_value = max(0, min(5, rating_value))
+                stars = ("★" * rating_value) + ("☆" * (5 - rating_value))
+
+                created_at = item.get("created_at", "")
+                try:
+                    created_display = datetime.fromisoformat(created_at.replace("Z", "+00:00")).strftime("%Y-%m-%d %H:%M UTC")
+                except (TypeError, ValueError):
+                    created_display = "Unknown time"
+
+                feedback_body = html.escape(str(item.get("feedback", "")).strip())
+                contact_text = html.escape(str(item.get("contact", "")).strip())
+                contact_line = f" • by {contact_text}" if contact_text else ""
+
+                review_html_parts.append(
+                    f'''
+                    <div class="review-item">
+                        <div class="review-item-head">{idx}. {stars}</div>
+                        <div class="review-item-meta">{created_display}{contact_line}</div>
+                        <div class="review-item-body">{feedback_body}</div>
+                    </div>
+                    '''
+                )
+
+            review_html_parts.append('</div>')
+            st.markdown("".join(review_html_parts), unsafe_allow_html=True)
+        else:
+            st.caption("No reviews yet. Be the first to share feedback.")
+
+        st.divider()
         st.caption("Built with Streamlit · Graphviz · AI Providers")
 
 
@@ -2365,38 +2436,7 @@ def render_feedback_section():
         else:
             st.error("Unable to save feedback right now. Please try again.")
 
-    recent_feedback = _load_feedback_entries()
-    if recent_feedback:
-        st.markdown("#### Recent Feedback")
-        for item in reversed(recent_feedback[-5:]):
-            rating_value = int(item.get("rating", 0) or 0)
-            rating_value = max(0, min(5, rating_value))
-            stars = "★" * rating_value + "☆" * (5 - rating_value)
-
-            created_at = item.get("created_at", "")
-            try:
-                created_display = datetime.fromisoformat(created_at.replace("Z", "+00:00")).strftime("%Y-%m-%d %H:%M UTC")
-            except (TypeError, ValueError):
-                created_display = "Unknown time"
-
-            feedback_body = str(item.get("feedback", "")).strip()
-            if len(feedback_body) > 220:
-                feedback_body = f"{feedback_body[:220].rstrip()}..."
-
-            contact_text = str(item.get("contact", "")).strip()
-            contact_line = f" • by {contact_text}" if contact_text else ""
-
-            st.markdown(
-                f"""
-                <div style="padding:0.75rem 0.85rem;margin:0.45rem 0;border:1px solid rgba(128,191,255,0.2);
-                    border-radius:10px;background:rgba(255,255,255,0.02);">
-                    <div style="font-weight:700;color:#d9eeff;font-size:0.92rem;">{stars}</div>
-                    <div style="color:#afc4d8;font-size:0.82rem;margin:0.2rem 0 0.45rem 0;">{created_display}{contact_line}</div>
-                    <div style="color:#e8f4ff;font-size:0.92rem;line-height:1.4;">{feedback_body}</div>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
+    st.caption("All submitted reviews are available in the sidebar under 'All Reviews'.")
 
 
 # ──────────────────────────────────────────────

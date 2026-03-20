@@ -1,0 +1,45 @@
+name: Streamlit Keep Alive (Selenium)
+
+on:
+  workflow_dispatch:
+    inputs:
+      app_url:
+        description: "Target app URL (use staging for testing first)"
+        required: true
+        default: "https://example-staging.streamlit.app"
+      wait_seconds:
+        description: "Wait time after load"
+        required: true
+        default: "12"
+  schedule:
+    - cron: "*/20 * * * *"
+
+jobs:
+  keepalive:
+    if: ${{ github.event_name != 'schedule' || vars.ENABLE_KEEPALIVE_SCHEDULE == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Selenium
+        run: |
+          python -m pip install --upgrade pip
+          pip install selenium
+
+      - name: Keep app alive with Selenium
+        env:
+          APP_URL: ${{ github.event.inputs.app_url }}
+          WAIT_SECONDS: ${{ github.event.inputs.wait_seconds }}
+        run: |
+          if [ -z "$APP_URL" ]; then
+            echo "No app_url input provided. Exiting."
+            exit 1
+          fi
+          python scripts/keep_alive_selenium.py --url "$APP_URL" --wait-seconds "$WAIT_SECONDS"
