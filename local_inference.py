@@ -40,7 +40,21 @@ class LocalInferenceEngine:
         self.client = None
         self.current_model = settings["model"]
         self.reason = None
+        self._provider_temporarily_disabled = False
+        self._last_error_signature = None
         self.initialize_models()
+
+    def _log_once(self, message: str) -> None:
+        """Log a provider error only once per unique message to avoid console spam."""
+        if message != self._last_error_signature:
+            print(message)
+            self._last_error_signature = message
+
+    def _disable_provider(self, reason: str) -> None:
+        """Disable provider for the current process after fatal API errors."""
+        self.reason = reason
+        self.client = None
+        self._provider_temporarily_disabled = True
     
     def _load_settings(self) -> dict:
         """Load provider settings from secrets.toml or environment."""
@@ -158,7 +172,12 @@ class LocalInferenceEngine:
 
     def is_available(self) -> bool:
         """Return True when an AI provider is configured and ready."""
-        return bool(self.client and self.current_model and self.provider)
+        return bool(
+            not self._provider_temporarily_disabled
+            and self.client
+            and self.current_model
+            and self.provider
+        )
     
     def _query(self, prompt: str, max_length: int = 150) -> Optional[str]:
         """
@@ -200,8 +219,18 @@ class LocalInferenceEngine:
                 timeout=60,
             )
             if response.status_code != 200:
-                self.reason = f"OpenAI API error {response.status_code}: {response.text[:120]}"
-                print(self.reason)
+                error_excerpt = response.text[:180]
+                self.reason = f"OpenAI API error {response.status_code}: {error_excerpt}"
+
+                # Quota/rate-limit errors should stop further attempts to avoid noisy logs.
+                if response.status_code in (429, 402):
+                    self._disable_provider(
+                        "OpenAI quota or rate limit reached. AI calls are temporarily disabled; static analysis remains available."
+                    )
+                    self._log_once(self.reason)
+                    return None
+
+                self._log_once(self.reason)
                 return None
 
             data = response.json()
@@ -216,7 +245,7 @@ class LocalInferenceEngine:
                 return content.strip() or None
         except Exception as e:
             self.reason = f"OpenAI query failed: {str(e)[:120]}"
-            print(self.reason)
+            self._log_once(self.reason)
 
         return None
 

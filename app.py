@@ -1021,7 +1021,7 @@ def _render_private_repo_access_help(repo_url: str, authorize_url: Optional[str]
     )
 
     if authorize_url:
-        st.link_button("Sign in with GitHub", authorize_url, use_container_width=True)
+        st.link_button("Sign in with GitHub", authorize_url, width="stretch")
         st.caption(
             "If the signed-in account does not have access to this private repository, analysis will still be denied."
         )
@@ -1310,7 +1310,7 @@ def render_repository_insights(results: dict):
                 ),
                 height=320,
             )
-            st.plotly_chart(fig_lang, use_container_width=True)
+            st.plotly_chart(fig_lang, width="stretch")
         else:
             # Fallback: use master_json language data
             lang_breakdown = results.get("master_json", {}).get("project_metadata", {}).get("language_breakdown", {})
@@ -1335,7 +1335,7 @@ def render_repository_insights(results: dict):
                     legend=dict(font=dict(color="#94a3b8", size=12), bgcolor="rgba(0,0,0,0)"),
                     height=320,
                 )
-                st.plotly_chart(fig_lang, use_container_width=True)
+                st.plotly_chart(fig_lang, width="stretch")
             else:
                 st.info("No language breakdown available.")
 
@@ -1369,7 +1369,7 @@ def render_repository_insights(results: dict):
                 legend=dict(font=dict(color="#94a3b8"), bgcolor="rgba(0,0,0,0)"),
                 height=320,
             )
-            st.plotly_chart(fig_sf, use_container_width=True)
+            st.plotly_chart(fig_sf, width="stretch")
         else:
             # Fallback – just this repo
             repo_name = results.get("repo_data", {}).get("repo", "This Repo")
@@ -1384,7 +1384,7 @@ def render_repository_insights(results: dict):
                 legend=dict(font=dict(color="#94a3b8"), bgcolor="rgba(0,0,0,0)"),
                 height=320,
             )
-            st.plotly_chart(fig_sf, use_container_width=True)
+            st.plotly_chart(fig_sf, width="stretch")
 
     st.divider()
 
@@ -1434,7 +1434,7 @@ def render_repository_insights(results: dict):
             ),
             height=300,
         )
-        st.plotly_chart(fig_commits, use_container_width=True)
+        st.plotly_chart(fig_commits, width="stretch")
     else:
         # Build a synthetic chart from the 30-day commits we already have
         st.caption("52-week stats not yet available from GitHub (may take a moment on first load). Showing 30-day estimate.")
@@ -1452,7 +1452,7 @@ def render_repository_insights(results: dict):
                 yaxis=dict(tickfont=dict(color="#94a3b8")),
                 height=220,
             )
-            st.plotly_chart(fig_est, use_container_width=True)
+            st.plotly_chart(fig_est, width="stretch")
         else:
             st.info("No commit activity data available.")
 
@@ -1497,7 +1497,7 @@ def render_repository_insights(results: dict):
             yaxis=dict(tickfont=dict(color="#94a3b8"), title=None, autorange="reversed"),
             height=360,
         )
-        st.plotly_chart(fig_heatmap, use_container_width=True)
+        st.plotly_chart(fig_heatmap, width="stretch")
     else:
         st.info("Activity heatmap will appear after GitHub stats are computed (may need ~30 seconds on first load for new repositories).")
 
@@ -1723,14 +1723,8 @@ def render_repo_read_guidance(results: dict):
     }
 
     summary_text = generate_repo_summary(repo_info)
-    status = get_model_status()
-    provider_name = status.get("provider") or "heuristic"
-    model_name = status.get("model") or "Fallback heuristic"
 
     st.info(summary_text)
-    st.caption(f"AI Provider: {provider_name} | Model: {model_name}")
-    if status.get("hf_disabled"):
-        st.warning(f"AI provider unavailable: {status.get('reason', 'No provider configured')}. Using fallback summaries.")
 
     if top_function_files:
         st.markdown("**Suggested files to start with:**")
@@ -1919,7 +1913,7 @@ def render_architecture_diagrams(results: dict):
         has_any_diagram = True
         with st.expander("🔗 Module Dependency Graph", expanded=True):
             try:
-                st.image(graphs["module_dependency"]["png"], use_container_width=True)
+                st.image(graphs["module_dependency"]["png"], width="stretch")
                 st.caption("Visual representation of module imports and dependencies")
             except Exception as e:
                 st.error(f"Could not render module dependency graph: {e}")
@@ -1934,7 +1928,7 @@ def render_architecture_diagrams(results: dict):
         has_any_diagram = True
         with st.expander("🛣️ API Route Flow", expanded=True):
             try:
-                st.image(graphs["api_routes"]["png"], use_container_width=True)
+                st.image(graphs["api_routes"]["png"], width="stretch")
                 st.caption("API endpoints and their handler functions")
             except Exception as e:
                 st.error(f"Could not render API route graph: {e}")
@@ -1949,7 +1943,7 @@ def render_architecture_diagrams(results: dict):
         has_any_diagram = True
         with st.expander("⚛️ React Component Graph", expanded=True):
             try:
-                st.image(graphs["component_graph"]["png"], use_container_width=True)
+                st.image(graphs["component_graph"]["png"], width="stretch")
                 st.caption("React component relationships and dependencies")
             except Exception as e:
                 st.error(f"Could not render component graph: {e}")
@@ -2110,24 +2104,14 @@ def render_ai_review(results: dict):
     status = get_model_status()
 
     if not status.get("available"):
-        st.warning(
-            "**AI provider not configured.**\n\n"
-            "To enable AI-powered architectural review:\n"
-            "1. Set `OPENAI_API_KEY` for GPT models or `GEMINI_API_KEY` for Google Gemini Pro\n"
-            "2. Optionally set `AI_PROVIDER` to `openai`, `gemini`, or `huggingface`\n"
-            "3. Optionally set `OPENAI_MODEL` or `GEMINI_MODEL` to override the default model\n\n"
-            "✅ **Static semantic analysis completed successfully** — see File Breakdown section for detailed insights."
-        )
+        st.info("AI review is currently unavailable. Detailed static analysis is still available in other tabs.")
         return
 
     ai_result = results.get("ai_review")
     if ai_result and ai_result.get("success"):
         st.markdown(ai_result["review"])
     elif ai_result:
-        st.info(
-            f"**AI review unavailable:** {ai_result.get('error', 'Unknown error')}\n\n"
-            "✅ **Static semantic analysis completed successfully** — see File Breakdown section for detailed insights."
-        )
+        st.info("AI review is currently unavailable. Detailed static analysis is still available in other tabs.")
 
 
 def render_raw_json(results: dict):
@@ -2183,7 +2167,7 @@ def render_pdf_export(results: dict):
     col1, col2 = st.columns([1, 3])
     
     with col1:
-        if st.button("📥 Generate PDF Report", type="primary", use_container_width=True):
+        if st.button("📥 Generate PDF Report", type="primary", width="stretch"):
             with st.spinner("Generating comprehensive PDF report..."):
                 try:
                     pdf_bytes = generate_comprehensive_pdf_report(results)
@@ -2192,11 +2176,49 @@ def render_pdf_export(results: dict):
                         data=pdf_bytes,
                         file_name=f"{results['repo_data']['repo']}_intelligence_report.pdf",
                         mime="application/pdf",
-                        use_container_width=True,
+                        width="stretch",
                     )
                     st.success("PDF generated successfully!")
                 except Exception as e:
                     st.error(f"Failed to generate PDF: {e}")
+
+
+def _render_tab_persistence_script() -> None:
+    """Persist and restore selected results tab across reruns."""
+    st.markdown(
+        """
+        <script>
+        (() => {
+            const KEY = 'repo_intelligence_active_tab';
+
+            function bindAndRestoreTabs() {
+                const tabs = Array.from(document.querySelectorAll('[role="tab"]'));
+                if (!tabs.length) {
+                    return;
+                }
+
+                // Restore previously selected tab index.
+                const saved = window.sessionStorage.getItem(KEY);
+                const idx = saved !== null ? parseInt(saved, 10) : NaN;
+                if (!Number.isNaN(idx) && idx >= 0 && idx < tabs.length) {
+                    tabs[idx].click();
+                }
+
+                // Save selected tab whenever user clicks.
+                tabs.forEach((tab, i) => {
+                    tab.addEventListener('click', () => {
+                        window.sessionStorage.setItem(KEY, String(i));
+                    }, { once: false });
+                });
+            }
+
+            // Streamlit rerenders frequently, so bind after initial paint.
+            setTimeout(bindAndRestoreTabs, 100);
+        })();
+        </script>
+        """,
+        unsafe_allow_html=True,
+    )
 
 
 # ──────────────────────────────────────────────
@@ -2232,7 +2254,7 @@ def render_sidebar():
         if oauth_token:
             username = (oauth_user or {}).get("login", "GitHub user")
             st.success(f"🔑 Signed in as @{username}")
-            if st.button("Sign out GitHub", key="github_oauth_signout", use_container_width=True):
+            if st.button("Sign out GitHub", key="github_oauth_signout", width="stretch"):
                 _revoke_github_oauth_token(oauth_token)
                 st.session_state.pop("github_oauth_token", None)
                 st.session_state.pop("github_oauth_user", None)
@@ -2242,7 +2264,7 @@ def render_sidebar():
         else:
             st.info("Not signed in. Public repositories will still work.")
             if authorize_url:
-                st.link_button("Sign in with GitHub", authorize_url, use_container_width=True)
+                st.link_button("Sign in with GitHub", authorize_url, width="stretch")
             else:
                 st.caption("GitHub OAuth is not configured in secrets.")
 
@@ -2278,7 +2300,7 @@ def render_sidebar():
 
                 if selected_image:
                     st.markdown('<div class="developer-image-shell">', unsafe_allow_html=True)
-                    st.image(selected_image, use_container_width=True)
+                    st.image(selected_image, width="stretch")
                     st.markdown('</div>', unsafe_allow_html=True)
                 else:
                     st.info("Image not found")
@@ -2290,7 +2312,7 @@ def render_sidebar():
                 st.link_button(
                     f'🔗 View GitHub',
                     developer["url"],
-                    use_container_width=True,
+                    width="stretch",
                 )
                 st.markdown('</div>', unsafe_allow_html=True)
 
@@ -2313,8 +2335,8 @@ def render_private_repo_signin_prompt():
             st.write(message)
             st.caption("Public repositories do not require sign-in. GitHub OAuth opens github.com for secure consent, then returns here and resumes analysis.")
             if authorize_url:
-                st.link_button("Continue with GitHub Sign-In", authorize_url, use_container_width=True)
-            if st.button("Close", use_container_width=True):
+                st.link_button("Continue with GitHub Sign-In", authorize_url, width="stretch")
+            if st.button("Close", width="stretch"):
                 st.session_state.pop("private_repo_signin_prompt", None)
                 st.rerun()
 
@@ -2346,7 +2368,7 @@ def render_feedback_section():
             max_chars=1000,
         )
         contact = st.text_input("Email or GitHub (optional)", placeholder="you@example.com or github.com/yourname")
-        submitted = st.form_submit_button("Submit Feedback", use_container_width=True)
+        submitted = st.form_submit_button("Submit Feedback", width="stretch")
 
     if submitted:
         clean_feedback = feedback_text.strip()
@@ -2368,7 +2390,7 @@ def render_feedback_section():
     recent_feedback = _load_feedback_entries()
     if recent_feedback:
         st.markdown("#### Recent Feedback")
-        for item in reversed(recent_feedback[-5:]):
+        for item in reversed(recent_feedback):
             rating_value = int(item.get("rating", 0) or 0)
             rating_value = max(0, min(5, rating_value))
             stars = "★" * rating_value + "☆" * (5 - rating_value)
@@ -2462,8 +2484,8 @@ def main():
                     st.error(f"Could not resume analysis automatically: {e}")
 
     col1, col2, col3 = st.columns([1, 1, 4])
-    analyze_btn = col1.button("🚀 Analyze", type="primary", use_container_width=True)
-    clear_btn = col2.button("🗑️ Clear", use_container_width=True)
+    analyze_btn = col1.button("🚀 Analyze", type="primary", width="stretch")
+    clear_btn = col2.button("🗑️ Clear", width="stretch")
 
     if clear_btn:
         st.session_state.pop("analysis_results", None)
@@ -2539,6 +2561,8 @@ def main():
             "Export",
         ])
 
+        _render_tab_persistence_script()
+
         with tab1:
             render_repo_read_guidance(results)
             render_dependencies(results)
@@ -2569,3 +2593,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+

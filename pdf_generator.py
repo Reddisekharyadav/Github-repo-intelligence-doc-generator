@@ -165,6 +165,15 @@ def sanitize_text(text: str) -> str:
     return text
 
 
+def _as_dict(value: Any) -> Dict[str, Any]:
+    """Normalize parsed analysis values so PDF rendering can safely access keys."""
+    if isinstance(value, dict):
+        return value
+    if isinstance(value, str):
+        return {"name": value}
+    return {}
+
+
 # ──────────────────────────────────────────────
 # Section Generators
 # ──────────────────────────────────────────────
@@ -491,9 +500,10 @@ def add_detailed_source_analysis_pages(story: List, results: Dict, styles: Dict)
         if classes:
             story.append(Paragraph(f"<b>Classes ({len(classes)}):</b>", styles['Normal']))
             for cls in classes:
-                cls_name = cls.get("name", "Unknown")
-                cls_desc = cls.get("description", "")
-                methods = cls.get("methods", [])
+                cls_obj = _as_dict(cls)
+                cls_name = cls_obj.get("name", "Unknown")
+                cls_desc = cls_obj.get("description", "")
+                methods = cls_obj.get("methods", [])
                 
                 story.append(Paragraph(f"  • <b>{sanitize_text(cls_name)}</b>", styles['CodeBlock']))
                 if cls_desc:
@@ -502,9 +512,10 @@ def add_detailed_source_analysis_pages(story: List, results: Dict, styles: Dict)
                 if methods:
                     story.append(Paragraph(f"    Methods: {len(methods)}", styles['Metadata']))
                     for method in methods[:10]:  # Limit to 10 methods
-                        method_name = method.get("name", "")
-                        params = method.get("parameters", [])
-                        method_desc = method.get("description", "")
+                        method_obj = _as_dict(method)
+                        method_name = method_obj.get("name", "")
+                        params = method_obj.get("parameters", [])
+                        method_desc = method_obj.get("description", "")
                         
                         param_str = ", ".join([sanitize_text(str(p)) for p in params])
                         story.append(Paragraph(
@@ -526,13 +537,14 @@ def add_detailed_source_analysis_pages(story: List, results: Dict, styles: Dict)
             story.append(Spacer(1, 0.07*inch))
             
             for func_idx, func in enumerate(functions, 1):  # Show ALL functions
-                func_name = func.get("name", "Unknown")
-                params = func.get("parameters", [])
-                func_desc = func.get("description", "")
-                decorators = func.get("decorators", [])
-                returns = func.get("returns", "")
-                docstring = func.get("docstring", "")
-                is_async = func.get("is_async", False)
+                func_obj = _as_dict(func)
+                func_name = func_obj.get("name", "Unknown")
+                params = func_obj.get("parameters", [])
+                func_desc = func_obj.get("description", "")
+                decorators = func_obj.get("decorators", [])
+                returns = func_obj.get("returns", "")
+                docstring = func_obj.get("docstring", "")
+                is_async = func_obj.get("is_async", False)
                 
                 param_str = ", ".join([sanitize_text(str(p)) for p in params])
                 
@@ -562,7 +574,7 @@ def add_detailed_source_analysis_pages(story: List, results: Dict, styles: Dict)
                 
                 # Parameters with descriptions if available
                 if params and len(params) > 0:
-                    param_info = func.get("param_descriptions", {})
+                    param_info = func_obj.get("param_descriptions", {})
                     story.append(Paragraph(f"     Parameters: {len(params)}", styles['Metadata']))
                     for param in params[:8]:  # Limit params shown
                         param_desc = param_info.get(str(param), "") if param_info else ""
@@ -588,11 +600,12 @@ def add_detailed_source_analysis_pages(story: List, results: Dict, styles: Dict)
         if components:
             story.append(Paragraph(f"<b>React Components ({len(components)}):</b>", styles['Normal']))
             for comp in components:
-                comp_name = comp.get("name", "Unknown")
-                comp_type = comp.get("type", "")
-                props = comp.get("props", [])
-                hooks = comp.get("hooks", [])
-                comp_desc = comp.get("description", "")
+                comp_obj = _as_dict(comp)
+                comp_name = comp_obj.get("name", "Unknown")
+                comp_type = comp_obj.get("type", "")
+                props = comp_obj.get("props", [])
+                hooks = comp_obj.get("hooks", [])
+                comp_desc = comp_obj.get("description", "")
                 
                 story.append(Paragraph(
                     f"  • <b>{sanitize_text(comp_name)}</b> ({sanitize_text(comp_type)})",
@@ -615,10 +628,11 @@ def add_detailed_source_analysis_pages(story: List, results: Dict, styles: Dict)
         if routes:
             story.append(Paragraph(f"<b>API Routes ({len(routes)}):</b>", styles['Normal']))
             for route in routes:
-                method = route.get("method", "GET")
-                path = route.get("path", "")
-                handler = route.get("handler", "")
-                route_desc = route.get("description", "")
+                route_obj = _as_dict(route)
+                method = route_obj.get("method", "GET")
+                path = route_obj.get("path", "")
+                handler = route_obj.get("handler", "")
+                route_desc = route_obj.get("description", "")
                 
                 story.append(Paragraph(
                     f"  • <b>{sanitize_text(method)}</b> {sanitize_text(path)}",
