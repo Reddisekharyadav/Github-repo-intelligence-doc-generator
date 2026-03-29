@@ -421,6 +421,36 @@ def _append_feedback_entry(entry: dict) -> bool:
         return False
 
 
+def _save_feedback_entries(entries: list[dict]) -> bool:
+    """Persist feedback entries to local storage."""
+    file_path = _feedback_file_path()
+    try:
+        file_path.write_text(json.dumps(entries, indent=2), encoding="utf-8")
+        return True
+    except OSError:
+        return False
+
+
+def _update_feedback_entry(index: int, updated_entry: dict) -> bool:
+    """Update one feedback entry by index."""
+    entries = _load_feedback_entries()
+    if index < 0 or index >= len(entries):
+        return False
+
+    entries[index] = updated_entry
+    return _save_feedback_entries(entries)
+
+
+def _delete_feedback_entry(index: int) -> bool:
+    """Delete one feedback entry by index."""
+    entries = _load_feedback_entries()
+    if index < 0 or index >= len(entries):
+        return False
+
+    entries.pop(index)
+    return _save_feedback_entries(entries)
+
+
 def _get_user_github_token() -> Optional[str]:
     """Get end-user GitHub token from OAuth or manual session input."""
     oauth_token = st.session_state.get("github_oauth_token", "").strip()
@@ -2421,6 +2451,87 @@ def render_feedback_section():
             )
 
 
+def _is_review_edit_mode() -> bool:
+    """Return True when hidden feedback review/edit mode is requested."""
+    raw = _get_query_param_value("review-edit")
+    if raw is None:
+        raw = _get_query_param_value("review_edit")
+    if raw is None:
+        return False
+
+    return str(raw).strip().lower() in {"1", "true", "yes", "on"}
+
+
+def render_feedback_review_editor():
+    """Render hidden feedback editor page for review/edit operations."""
+    st.title("Feedback Review Editor")
+    st.caption("Hidden maintenance page for editing or deleting feedback entries.")
+
+    entries = _load_feedback_entries()
+    if not entries:
+        st.info("No feedback entries found.")
+        return
+
+    st.markdown(f"Total entries: **{len(entries)}**")
+
+    for reverse_index, item in enumerate(reversed(entries)):
+        original_index = len(entries) - 1 - reverse_index
+        created_at = str(item.get("created_at", "")).strip() or "Unknown time"
+        feedback_preview = str(item.get("feedback", "")).strip() or "(empty feedback)"
+        if len(feedback_preview) > 80:
+            feedback_preview = f"{feedback_preview[:80].rstrip()}..."
+
+        with st.expander(f"Entry {original_index + 1} | {created_at} | {feedback_preview}"):
+            with st.form(f"review_edit_form_{original_index}"):
+                rating_value = int(item.get("rating", 4) or 4)
+                rating_value = max(1, min(5, rating_value))
+
+                updated_rating = st.slider(
+                    "Rating",
+                    min_value=1,
+                    max_value=5,
+                    value=rating_value,
+                    key=f"review_rating_{original_index}",
+                )
+                updated_feedback = st.text_area(
+                    "Feedback",
+                    value=str(item.get("feedback", "")),
+                    max_chars=1000,
+                    key=f"review_feedback_{original_index}",
+                )
+                updated_contact = st.text_input(
+                    "Email or GitHub",
+                    value=str(item.get("contact", "")),
+                    key=f"review_contact_{original_index}",
+                )
+
+                save_clicked = st.form_submit_button("Save Changes", width="stretch")
+
+            if save_clicked:
+                clean_feedback = updated_feedback.strip()
+                if not clean_feedback:
+                    st.warning("Feedback cannot be empty.")
+                else:
+                    updated_entry = {
+                        "created_at": str(item.get("created_at", "")),
+                        "rating": updated_rating,
+                        "feedback": clean_feedback,
+                        "contact": updated_contact.strip(),
+                    }
+                    if _update_feedback_entry(original_index, updated_entry):
+                        st.success("Entry updated.")
+                        st.rerun()
+                    else:
+                        st.error("Unable to update entry.")
+
+            if st.button("Delete Entry", key=f"review_delete_{original_index}", type="secondary"):
+                if _delete_feedback_entry(original_index):
+                    st.success("Entry deleted.")
+                    st.rerun()
+                else:
+                    st.error("Unable to delete entry.")
+
+
 # ──────────────────────────────────────────────
 # Main Application
 # ──────────────────────────────────────────────
@@ -2456,6 +2567,11 @@ def main():
     render_header()
     render_sidebar()
     render_private_repo_signin_prompt()
+
+    if _is_review_edit_mode():
+        render_feedback_review_editor()
+        return
+
     if "analysis_results" not in st.session_state:
         render_first_run_dashboard()
 
